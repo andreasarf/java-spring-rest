@@ -2,10 +2,10 @@
 Example for implementation Rest API using Spring Boot.
 
 ## Requirement
-Java 8+
+Java 25+ (Spring Boot 4)
 
 ## Build
-`mvn clean install`
+`./mvnw clean install`
 
 ## Database
 Database uses in-memory DB H2. It will automatically build and export the required tables and data.
