@@ -1,6 +1,7 @@
 package com.company.resourceapi.controllers;
 
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -278,5 +279,37 @@ public class ProjectRestControllerTest {
         // Repositories must only be reachable through the validated controller endpoints
         mockMvc.perform(get("/projects"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void givenNullExternalIdWhenPatchedThenReturnStatusBadRequest() throws Exception {
+        String requestUri = String.format(ENDPOINT_WITH_ID, 1);
+
+        mockMvc.perform(patch(requestUri)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"externalId\": null}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void givenControlCharacterExternalIdWhenPatchedThenReturnStatusBadRequest() throws Exception {
+        String requestUri = String.format(ENDPOINT_WITH_ID, 1);
+
+        mockMvc.perform(patch(requestUri)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"externalId\": \"\\u0001\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void givenProjectJsonWhenPostThenTimestampsMatchStoredPrecision() throws Exception {
+        final String jsonContent = String.format(PROJECT_JSON_TEMPLATE, "SECONDS", "Name", 1);
+
+        mockMvc.perform(post(ProjectRestController.ENDPOINT)
+                .content(jsonContent)
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.createdDate", matchesPattern(".*T\\d{2}:\\d{2}:\\d{2}Z")))
+                .andExpect(jsonPath("$.lastModifiedDate", matchesPattern(".*T\\d{2}:\\d{2}:\\d{2}Z")));
     }
 }

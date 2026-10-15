@@ -1,8 +1,8 @@
 package com.company.resourceapi.services;
 
 import com.company.resourceapi.entities.SdlcSystem;
-import java.util.Optional;
+import com.company.resourceapi.exceptions.NotFoundException;
 
 public interface SdlcSystemService {
-    Optional<SdlcSystem> getSdlcSystem(long id);
+    SdlcSystem getSdlcSystem(long id) throws NotFoundException;
 }
