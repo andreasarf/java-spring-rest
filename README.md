@@ -14,5 +14,7 @@ Java 25+ (Spring Boot 4)
 ## Database
 Database uses in-memory DB H2. It will automatically build and export the required tables and data.
 
+The H2 console (`/h2-console`, JDBC URL `jdbc:h2:mem:test`) is available while running with devtools, e.g. `./mvnw spring-boot:run`. It is not served by the packaged jar.
+
 ## Testing
 There are scripts to test the Rest API in Postman.
