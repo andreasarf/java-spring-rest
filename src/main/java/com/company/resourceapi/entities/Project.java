@@ -18,6 +18,7 @@ import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -27,6 +28,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @EntityListeners(AuditingEntityListener.class)
 @Data
 @NoArgsConstructor
+@DynamicUpdate
 public class Project {
 
     /** Length of the varchar columns in schema.sql. */
