@@ -336,4 +336,20 @@ public class ProjectRestControllerTest {
                 .andExpect(jsonPath("$.createdDate", matchesPattern(".*T\\d{2}:\\d{2}:\\d{2}Z")))
                 .andExpect(jsonPath("$.lastModifiedDate", matchesPattern(".*T\\d{2}:\\d{2}:\\d{2}Z")));
     }
+
+    @Test
+    void givenSdlcSystemWithoutIdWhenPostThenReturnStatusBadRequest() throws Exception {
+        mockMvc.perform(post(ProjectRestController.ENDPOINT)
+                .content("{\"externalId\": \"NOSYSTEMID\", \"sdlcSystem\": {}}")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void givenSdlcSystemWithoutIdWhenPatchedThenReturnStatusBadRequest() throws Exception {
+        mockMvc.perform(patch(String.format(ENDPOINT_WITH_ID, 1))
+                .content("{\"sdlcSystem\": {}}")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
+    }
 }

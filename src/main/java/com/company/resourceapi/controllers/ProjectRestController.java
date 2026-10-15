@@ -7,20 +7,20 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 import com.company.resourceapi.entities.Project;
 import com.company.resourceapi.entities.SdlcSystem;
+import com.company.resourceapi.exceptions.ConflictException;
 import com.company.resourceapi.exceptions.NotFoundException;
 import com.company.resourceapi.services.ProjectService;
 import com.company.resourceapi.services.SdlcSystemService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
-import jakarta.validation.Validator;
 import java.net.URI;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.hibernate.exception.ConstraintViolationException;
 import org.hibernate.exception.ConstraintViolationException.ConstraintKind;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping(ProjectRestController.ENDPOINT)
@@ -49,7 +50,6 @@ public class ProjectRestController {
 
     private final ProjectService projectService;
     private final SdlcSystemService sdlcSystemService;
-    private final Validator validator;
 
     @Operation(summary = "Get a Project")
     @GetMapping(ENDPOINT_ID)
@@ -64,7 +64,7 @@ public class ProjectRestController {
     public ResponseEntity<Project> createProject(
             @Valid
             @RequestBody Project project) throws NotFoundException {
-        var sdlcSystem = sdlcSystemService.getSdlcSystem(project.getSdlcSystem().getId());
+        var sdlcSystem = findSdlcSystem(project.getSdlcSystem());
 
         // Checked up front for a clean 409; the unique key still guards against concurrent requests
         if (projectService.getProject(project.getExternalId(), sdlcSystem.getId()).isPresent()) {
@@ -83,43 +83,27 @@ public class ProjectRestController {
     public ResponseEntity<Project> updateProject(
             @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
             @PathVariable(PATH_VARIABLE_ID) long projectId,
-            @Valid @RequestBody PatchedProject patchedProject) throws NotFoundException {
-        // Detached (open-in-view is off), so rejected changes below are never flushed
-        var project = projectService.getProject(projectId);
+            @RequestBody PatchedProject patchedProject) throws NotFoundException {
+        var updatedProject = projectService.updateProject(projectId, project -> {
+            if (patchedProject.isNameDirty()) {
+                project.setName(patchedProject.getName());
+            }
 
-        if (patchedProject.isNameDirty()) {
-            project.setName(patchedProject.getName());
-        }
+            if (patchedProject.isExternalIdDirty()) {
+                project.setExternalId(patchedProject.getExternalId());
+            }
 
-        if (patchedProject.isExternalIdDirty()) {
-            project.setExternalId(patchedProject.getExternalId());
-        }
+            if (patchedProject.isSdlcSystemDirty()) {
+                var patchedSystem = patchedProject.getSdlcSystem();
+                project.setSdlcSystem(patchedSystem == null ? null : findSdlcSystem(patchedSystem));
+            }
+        });
 
-        if (patchedProject.isSdlcSystemDirty()) {
-            var patchedSystem = patchedProject.getSdlcSystem();
-            project.setSdlcSystem(patchedSystem == null
-                    ? null : sdlcSystemService.getSdlcSystem(patchedSystem.getId()));
-        }
-
-        // Validate the patched project against the same constraints as POST
-        var violations = validator.validate(project);
-        if (!violations.isEmpty()) {
-            throw new jakarta.validation.ConstraintViolationException(violations);
-        }
-
-        if ((patchedProject.isExternalIdDirty() || patchedProject.isSdlcSystemDirty())
-                && projectService
-                .getProject(project.getExternalId(), project.getSdlcSystem().getId())
-                .filter(existingProject -> existingProject.getId() != projectId)
-                .isPresent()) {
-            return ResponseEntity.status(CONFLICT).build();
-        }
-
-        return ResponseEntity.ok(projectService.updateProject(project));
+        return ResponseEntity.ok(updatedProject);
     }
 
-    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
-    ResponseEntity<Void> handleInvalidPatch(jakarta.validation.ConstraintViolationException e) {
+    @ExceptionHandler(ConstraintViolationException.class)
+    ResponseEntity<Void> handleConstraintViolation(ConstraintViolationException e) {
         log.debug(e.getMessage());
         return ResponseEntity.status(BAD_REQUEST).build();
     }
@@ -130,9 +114,15 @@ public class ProjectRestController {
         return ResponseEntity.status(NOT_FOUND).build();
     }
 
+    @ExceptionHandler(ConflictException.class)
+    ResponseEntity<Void> handleConflict(ConflictException e) {
+        log.debug(e.getMessage());
+        return ResponseEntity.status(CONFLICT).build();
+    }
+
     /**
      * The (sdlcSystem, externalId) pair is unique, so a concurrent request can still insert a
-     * duplicate after the conflict check above has passed. Any other integrity violation is a
+     * duplicate after the conflict checks have passed. Any other integrity violation is a
      * server-side problem and is left to the default error handling.
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
@@ -146,11 +136,19 @@ public class ProjectRestController {
 
     static boolean isUniqueConstraintViolation(DataIntegrityViolationException e) {
         for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
-            if (cause instanceof ConstraintViolationException violation) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException violation) {
                 return violation.getKind() == ConstraintKind.UNIQUE;
             }
         }
         return false;
+    }
+
+    /** Resolves the SDLC system a request refers to; database ids start at 1, so 0 means "missing". */
+    private SdlcSystem findSdlcSystem(SdlcSystem reference) throws NotFoundException {
+        if (reference.getId() <= 0) {
+            throw new ResponseStatusException(BAD_REQUEST, "sdlcSystem.id is required");
+        }
+        return sdlcSystemService.getSdlcSystem(reference.getId());
     }
 
     @Getter
