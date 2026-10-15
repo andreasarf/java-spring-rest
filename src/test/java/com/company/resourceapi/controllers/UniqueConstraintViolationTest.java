@@ -6,7 +6,10 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import com.company.resourceapi.entities.Project;
 import com.company.resourceapi.repositories.ProjectRepository;
 import com.company.resourceapi.repositories.SdlcSystemRepository;
+import jakarta.persistence.PersistenceException;
 import java.sql.SQLException;
+import org.hibernate.exception.ConstraintViolationException;
+import org.hibernate.exception.ConstraintViolationException.ConstraintKind;
 import org.hibernate.exception.DataException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,5 +48,15 @@ class UniqueConstraintViolationTest {
                 new DataException("value too long", new SQLException()));
 
         assertThat(ProjectRestController.isUniqueConstraintViolation(e)).isFalse();
+    }
+
+    @Test
+    void givenWrappedUniqueViolationThenRecognisedAsUniqueConstraintViolation() {
+        // e.g. a commit-time failure wrapped by the persistence provider
+        var e = new DataIntegrityViolationException("could not commit",
+                new PersistenceException(new ConstraintViolationException(
+                        "duplicate", new SQLException(), ConstraintKind.UNIQUE, "system_project")));
+
+        assertThat(ProjectRestController.isUniqueConstraintViolation(e)).isTrue();
     }
 }

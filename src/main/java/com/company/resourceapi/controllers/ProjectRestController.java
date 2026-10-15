@@ -14,7 +14,6 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.net.URI;
 import lombok.Getter;
@@ -64,7 +63,7 @@ public class ProjectRestController {
     public ResponseEntity<Project> createProject(
             @Valid
             @RequestBody Project project) throws NotFoundException {
-        var sdlcSystem = findSdlcSystem(project.getSdlcSystem().getId());
+        var sdlcSystem = sdlcSystemService.getSdlcSystem(project.getSdlcSystem().getId());
 
         if (projectService.getProject(project.getExternalId(), sdlcSystem.getId()).isPresent()) {
             return ResponseEntity.status(CONFLICT).build();
@@ -94,7 +93,8 @@ public class ProjectRestController {
         }
 
         if (patchedProject.isSdlcSystemDirty()) {
-            project.setSdlcSystem(findSdlcSystem(patchedProject.getSdlcSystem().getId()));
+            project.setSdlcSystem(
+                    sdlcSystemService.getSdlcSystem(patchedProject.getSdlcSystem().getId()));
         }
 
         if ((patchedProject.isExternalIdDirty() || patchedProject.isSdlcSystemDirty())
@@ -129,20 +129,18 @@ public class ProjectRestController {
     }
 
     static boolean isUniqueConstraintViolation(DataIntegrityViolationException e) {
-        return e.getCause() instanceof ConstraintViolationException violation
-                && violation.getKind() == ConstraintKind.UNIQUE;
-    }
-
-    private SdlcSystem findSdlcSystem(long systemId) throws NotFoundException {
-        return sdlcSystemService.getSdlcSystem(systemId)
-                .orElseThrow(() -> new NotFoundException(SdlcSystem.class, systemId));
+        for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation) {
+                return violation.getKind() == ConstraintKind.UNIQUE;
+            }
+        }
+        return false;
     }
 
     @Getter
     @NoArgsConstructor
     static class PatchedProject {
         @Size(max = Project.MAX_TEXT_LENGTH)
-        @Pattern(regexp = "(?s).*\\S.*", message = "must not be blank")
         private String externalId;
         @Size(max = Project.MAX_TEXT_LENGTH)
         private String name;
@@ -152,10 +150,8 @@ public class ProjectRestController {
         private boolean isSdlcSystemDirty = false;
 
         public void setExternalId(String externalId) {
-            if (externalId != null) {
-                this.externalId = externalId;
-                isExternalIdDirty = true;
-            }
+            this.externalId = externalId;
+            isExternalIdDirty = true;
         }
 
         public void setName(String name) {
@@ -166,6 +162,12 @@ public class ProjectRestController {
         public void setSdlcSystem(SdlcSystem sdlcSystem) {
             this.sdlcSystem = sdlcSystem;
             isSdlcSystemDirty = true;
+        }
+
+        /** Same rule as {@code @NotBlank} on {@link Project#getExternalId()}, applied only if patched. */
+        @AssertTrue(message = "externalId must not be blank")
+        boolean isExternalIdPresentIfPatched() {
+            return !isExternalIdDirty || (externalId != null && !externalId.trim().isEmpty());
         }
 
         /** A project always belongs to an SDLC system, so it can be replaced but not removed. */

@@ -39,7 +39,7 @@ class ProjectRestControllerConflictTest {
         // given: the conflict check passes, but a concurrent request inserted the same project first
         var sdlcSystem = new SdlcSystem();
         sdlcSystem.setId(1);
-        when(sdlcSystemService.getSdlcSystem(1)).thenReturn(Optional.of(sdlcSystem));
+        when(sdlcSystemService.getSdlcSystem(1)).thenReturn(sdlcSystem);
         when(projectService.getProject(anyString(), anyLong())).thenReturn(Optional.empty());
         when(projectService.createProject(any())).thenThrow(new DataIntegrityViolationException(
                 "Unique index or primary key violation", new ConstraintViolationException(
