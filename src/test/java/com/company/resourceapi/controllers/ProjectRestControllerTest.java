@@ -1,6 +1,7 @@
 package com.company.resourceapi.controllers;
 
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -173,5 +174,72 @@ public class ProjectRestControllerTest {
                 .content(jsonContent))
                 // then
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void givenProjectJsonWithIdWhenPostThenCreateNewProjectInsteadOfOverwriting() throws Exception {
+        final long EXISTING_PROJECT_ID = 1;
+        final String jsonContent = "{\"id\": " + EXISTING_PROJECT_ID + ","
+                + String.format(PROJECT_JSON_TEMPLATE, "NEWPROJECT", "New Project", 3).substring(1);
+
+        mockMvc.perform(post(ProjectRestController.ENDPOINT)
+                .content(jsonContent)
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id", not(equalTo((int) EXISTING_PROJECT_ID))))
+                .andExpect(jsonPath(EXTERNALID_JPATH, equalTo("NEWPROJECT")));
+
+        mockMvc.perform(get(String.format(ENDPOINT_WITH_ID, EXISTING_PROJECT_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(EXTERNALID_JPATH, equalTo("SAMPLEPROJECT")));
+    }
+
+    @Test
+    void givenProjectJsonWhenPostThenReturnFullSdlcSystem() throws Exception {
+        final String jsonContent = String.format(PROJECT_JSON_TEMPLATE, "FULLSYSTEM", "Name", 2);
+
+        mockMvc.perform(post(ProjectRestController.ENDPOINT)
+                .content(jsonContent)
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.sdlcSystem.baseUrl", equalTo("http://bugzilla.company.com")));
+    }
+
+    @Test
+    void givenUnchangedExternalIdWhenPatchedThenReturnStatusOk() throws Exception {
+        final long PROJECT_ID = 6;
+        final String UNCHANGED_EXTERNALID = "PROJECTONE";
+        String requestUri = String.format(ENDPOINT_WITH_ID, PROJECT_ID);
+        final String jsonContent = String.format("{\"externalId\": \"%s\"}", UNCHANGED_EXTERNALID);
+
+        mockMvc.perform(patch(requestUri)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(jsonContent))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(EXTERNALID_JPATH, equalTo(UNCHANGED_EXTERNALID)));
+    }
+
+    @Test
+    void givenNullSdlcSystemWhenPatchedThenReturnStatusBadRequest() throws Exception {
+        final long PROJECT_ID = 1;
+        String requestUri = String.format(ENDPOINT_WITH_ID, PROJECT_ID);
+
+        mockMvc.perform(patch(requestUri)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"sdlcSystem\": null}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void givenNewSdlcSystemWhenPatchedThenReturnFullSdlcSystem() throws Exception {
+        final long PROJECT_ID = 7;
+        String requestUri = String.format(ENDPOINT_WITH_ID, PROJECT_ID);
+
+        mockMvc.perform(patch(requestUri)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(String.format(SDLC_SYSTEM_JSON_TEMPLATE2, 2)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(SYSTEM_ID_JPATH, equalTo(2)))
+                .andExpect(jsonPath("$.sdlcSystem.baseUrl", equalTo("http://bugzilla.company.com")));
     }
 }

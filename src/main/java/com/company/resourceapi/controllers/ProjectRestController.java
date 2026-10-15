@@ -3,7 +3,6 @@ package com.company.resourceapi.controllers;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.CREATED;
-import static org.springframework.http.HttpStatus.OK;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 import com.company.resourceapi.entities.Project;
@@ -15,12 +14,15 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import java.net.URI;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -50,29 +52,22 @@ public class ProjectRestController {
     @GetMapping(ENDPOINT_ID)
     public ResponseEntity<Project> getProject(
             @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
-            @PathVariable(PATH_VARIABLE_ID) final long projectId) {
-        try {
-            return ResponseEntity.status(OK).body(projectService.getProject(projectId));
-        } catch (NotFoundException e) {
-            log.debug(e.getMessage());
-            return ResponseEntity.status(NOT_FOUND).build();
-        }
+            @PathVariable(PATH_VARIABLE_ID) final long projectId) throws NotFoundException {
+        return ResponseEntity.ok(projectService.getProject(projectId));
     }
 
     @Operation(summary = "Create a Project")
     @PostMapping
     public ResponseEntity<Project> createProject(
             @Valid
-            @RequestBody Project project) {
-        long systemId = project.getSdlcSystem().getId();
+            @RequestBody Project project) throws NotFoundException {
+        var sdlcSystem = findSdlcSystem(project.getSdlcSystem().getId());
 
-        if (sdlcSystemService.getSdlcSystem(systemId).isEmpty()) {
-            return ResponseEntity.status(NOT_FOUND).build();
-        }
-        if (projectService.getProject(project.getExternalId(), systemId).isPresent()) {
+        if (projectService.getProject(project.getExternalId(), sdlcSystem.getId()).isPresent()) {
             return ResponseEntity.status(CONFLICT).build();
         }
 
+        project.setSdlcSystem(sdlcSystem);
         var createdProject = projectService.createProject(project);
         return ResponseEntity.status(CREATED)
                 .location(URI.create(LOCATION_HEADER.formatted(createdProject.getId())))
@@ -84,42 +79,53 @@ public class ProjectRestController {
     public ResponseEntity<Project> updateProject(
             @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
             @PathVariable(PATH_VARIABLE_ID) long projectId,
-            @Valid @RequestBody PatchedProject patchedProject) {
+            @Valid @RequestBody PatchedProject patchedProject) throws NotFoundException {
+        var project = projectService.getProject(projectId);
 
-        try {
-            var project = projectService.getProject(projectId);
-
-            if (patchedProject.isNameDirty()) {
-                project.setName(patchedProject.getName());
-            }
-
-            if (patchedProject.isExternalIdDirty()) {
-                project.setExternalId(patchedProject.getExternalId());
-            }
-
-            if (patchedProject.isSdlcSystemDirty()) {
-                long systemId = patchedProject.getSdlcSystem().getId();
-                if (sdlcSystemService.getSdlcSystem(systemId).isPresent()) {
-                    project.setSdlcSystem(patchedProject.getSdlcSystem());
-                } else {
-                    throw new NotFoundException(SdlcSystem.class, systemId);
-                }
-            }
-
-            if ((patchedProject.isExternalIdDirty() || patchedProject.isSdlcSystemDirty())
-                    && projectService
-                    .getProject(project.getExternalId(), project.getSdlcSystem().getId())
-                    .isPresent()) {
-                return ResponseEntity.status(CONFLICT).build();
-            }
-
-            return projectService.updateProject(project)
-                    .map(resultantProject -> ResponseEntity.status(OK).body(resultantProject))
-                    .orElseGet(() -> ResponseEntity.status(BAD_REQUEST).build());
-        } catch (NotFoundException e) {
-            log.debug(e.getMessage());
-            return ResponseEntity.status(NOT_FOUND).build();
+        if (patchedProject.isNameDirty()) {
+            project.setName(patchedProject.getName());
         }
+
+        if (patchedProject.isExternalIdDirty()) {
+            project.setExternalId(patchedProject.getExternalId());
+        }
+
+        if (patchedProject.isSdlcSystemDirty()) {
+            project.setSdlcSystem(findSdlcSystem(patchedProject.getSdlcSystem().getId()));
+        }
+
+        if ((patchedProject.isExternalIdDirty() || patchedProject.isSdlcSystemDirty())
+                && projectService
+                .getProject(project.getExternalId(), project.getSdlcSystem().getId())
+                .filter(existingProject -> existingProject.getId() != projectId)
+                .isPresent()) {
+            return ResponseEntity.status(CONFLICT).build();
+        }
+
+        return projectService.updateProject(project)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(BAD_REQUEST).build());
+    }
+
+    @ExceptionHandler(NotFoundException.class)
+    ResponseEntity<Void> handleNotFound(NotFoundException e) {
+        log.info(e.getMessage());
+        return ResponseEntity.status(NOT_FOUND).build();
+    }
+
+    /**
+     * The (sdlcSystem, externalId) pair is unique, so a concurrent request can still insert a
+     * duplicate after the conflict check above has passed.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ResponseEntity<Void> handleDataIntegrityViolation(DataIntegrityViolationException e) {
+        log.info("Rejected conflicting project: {}", e.getMostSpecificCause().getMessage());
+        return ResponseEntity.status(CONFLICT).build();
+    }
+
+    private SdlcSystem findSdlcSystem(long systemId) throws NotFoundException {
+        return sdlcSystemService.getSdlcSystem(systemId)
+                .orElseThrow(() -> new NotFoundException(SdlcSystem.class, systemId));
     }
 
     @Getter
@@ -147,6 +153,12 @@ public class ProjectRestController {
         public void setSdlcSystem(SdlcSystem sdlcSystem) {
             this.sdlcSystem = sdlcSystem;
             isSdlcSystemDirty = true;
+        }
+
+        /** A project always belongs to an SDLC system, so it can be replaced but not removed. */
+        @AssertTrue(message = "sdlcSystem must not be null")
+        boolean isSdlcSystemPresentIfPatched() {
+            return !isSdlcSystemDirty || sdlcSystem != null;
         }
     }
 }
