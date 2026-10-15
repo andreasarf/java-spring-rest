@@ -55,7 +55,8 @@ public class ProjectServiceImplTest {
         // then
         assertThat(result).isSameAs(storedProject);
         assertThat(result.getName()).isEqualTo("Renamed");
-        verify(projectRepository, never()).findByExternalIdAndSdlcSystemId(anyString(), anyLong());
+        verify(projectRepository, never())
+                .existsByExternalIdAndSdlcSystemIdAndIdNot(anyString(), anyLong(), anyLong());
     }
 
     @Test
@@ -67,10 +68,8 @@ public class ProjectServiceImplTest {
     @Test
     void givenDuplicateExternalIdWhenUpdateProjectThenThrowConflict() {
         // given
-        var otherProject = new Project();
-        otherProject.setId(2);
-        when(projectRepository.findByExternalIdAndSdlcSystemId("PROJECTX", 1))
-                .thenReturn(Optional.of(otherProject));
+        when(projectRepository.existsByExternalIdAndSdlcSystemIdAndIdNot("PROJECTX", 1, PROJECT_ID))
+                .thenReturn(true);
 
         // when / then
         assertThatThrownBy(() -> projectService.updateProject(PROJECT_ID, project -> project.setExternalId("PROJECTX")))

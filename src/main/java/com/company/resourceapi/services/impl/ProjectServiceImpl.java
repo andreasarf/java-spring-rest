@@ -49,10 +49,8 @@ public class ProjectServiceImpl implements ProjectService {
 
 		boolean keyChanged = !project.getExternalId().equals(externalIdBefore)
 				|| project.getSdlcSystem().getId() != sdlcSystemBefore.getId();
-		if (keyChanged && projectRepository
-				.findByExternalIdAndSdlcSystemId(project.getExternalId(), project.getSdlcSystem().getId())
-				.filter(existingProject -> existingProject.getId() != id)
-				.isPresent()) {
+		if (keyChanged && projectRepository.existsByExternalIdAndSdlcSystemIdAndIdNot(
+				project.getExternalId(), project.getSdlcSystem().getId(), id)) {
 			throw new ConflictException("Project %s already exists in SdlcSystem %d."
 					.formatted(project.getExternalId(), project.getSdlcSystem().getId()));
 		}

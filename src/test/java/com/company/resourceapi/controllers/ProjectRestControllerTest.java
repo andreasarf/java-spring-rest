@@ -352,4 +352,12 @@ public class ProjectRestControllerTest {
                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void givenNegativeSdlcSystemIdWhenPostThenReturnStatusNotFound() throws Exception {
+        mockMvc.perform(post(ProjectRestController.ENDPOINT)
+                .content(String.format(PROJECT_JSON_TEMPLATE, "NEGATIVE", "Name", -5))
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound());
+    }
 }

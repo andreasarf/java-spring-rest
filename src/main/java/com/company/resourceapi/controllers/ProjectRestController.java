@@ -143,9 +143,9 @@ public class ProjectRestController {
         return false;
     }
 
-    /** Resolves the SDLC system a request refers to; database ids start at 1, so 0 means "missing". */
+    /** Resolves the SDLC system a request refers to; an absent id deserializes to 0. */
     private SdlcSystem findSdlcSystem(SdlcSystem reference) throws NotFoundException {
-        if (reference.getId() <= 0) {
+        if (reference.getId() == 0) {
             throw new ResponseStatusException(BAD_REQUEST, "sdlcSystem.id is required");
         }
         return sdlcSystemService.getSdlcSystem(reference.getId());
