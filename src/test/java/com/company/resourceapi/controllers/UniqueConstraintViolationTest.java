@@ -15,7 +15,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 @Transactional
@@ -26,6 +29,9 @@ class UniqueConstraintViolationTest {
 
     @Autowired
     private SdlcSystemRepository sdlcSystemRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Test
     void givenDuplicateProjectWhenSavedThenRecognisedAsUniqueConstraintViolation() {
@@ -57,6 +63,21 @@ class UniqueConstraintViolationTest {
                 new PersistenceException(new ConstraintViolationException(
                         "duplicate", new SQLException(), ConstraintKind.UNIQUE, "system_project")));
 
+        assertThat(ProjectRestController.isUniqueConstraintViolation(e)).isTrue();
+    }
+
+    @Test
+    void givenDuplicateDetectedAtCommitThenRecognisedAsUniqueConstraintViolation() {
+        // given: a separate transaction whose change only hits the unique key when it commits
+        var concurrentRequest = new TransactionTemplate(transactionManager);
+        concurrentRequest.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+        // when: project 2 (PROJECTX, 2) is renamed to SAMPLEPROJECT, which project 3 already has in system 2
+        var e = catchThrowableOfType(DataIntegrityViolationException.class,
+                () -> concurrentRequest.executeWithoutResult(status ->
+                        projectRepository.findById(2L).orElseThrow().setExternalId("SAMPLEPROJECT")));
+
+        // then
         assertThat(ProjectRestController.isUniqueConstraintViolation(e)).isTrue();
     }
 }

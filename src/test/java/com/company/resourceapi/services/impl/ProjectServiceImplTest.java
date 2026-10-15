@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.company.resourceapi.entities.Project;
@@ -46,17 +48,14 @@ public class ProjectServiceImplTest {
     }
 
     @Test
-    void givenValidUpdateWhenUpdateProjectThenReturnUpdatedProject() throws Exception {
-        // given
-        when(projectRepository.findByExternalIdAndSdlcSystemId(anyString(), anyLong()))
-                .thenReturn(Optional.of(storedProject));
-
+    void givenNameOnlyUpdateWhenUpdateProjectThenSkipDuplicateCheck() throws Exception {
         // when
         Project result = projectService.updateProject(PROJECT_ID, project -> project.setName("Renamed"));
 
         // then
         assertThat(result).isSameAs(storedProject);
         assertThat(result.getName()).isEqualTo("Renamed");
+        verify(projectRepository, never()).findByExternalIdAndSdlcSystemId(anyString(), anyLong());
     }
 
     @Test
