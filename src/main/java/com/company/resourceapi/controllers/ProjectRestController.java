@@ -1,6 +1,5 @@
 package com.company.resourceapi.controllers;
 
-import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.CREATED;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
@@ -15,11 +14,15 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import java.net.URI;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
+import org.hibernate.exception.ConstraintViolationException.ConstraintKind;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -102,25 +105,32 @@ public class ProjectRestController {
             return ResponseEntity.status(CONFLICT).build();
         }
 
-        return projectService.updateProject(project)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.status(BAD_REQUEST).build());
+        return ResponseEntity.ok(projectService.updateProject(project));
     }
 
     @ExceptionHandler(NotFoundException.class)
     ResponseEntity<Void> handleNotFound(NotFoundException e) {
-        log.info(e.getMessage());
+        log.debug(e.getMessage());
         return ResponseEntity.status(NOT_FOUND).build();
     }
 
     /**
      * The (sdlcSystem, externalId) pair is unique, so a concurrent request can still insert a
-     * duplicate after the conflict check above has passed.
+     * duplicate after the conflict check above has passed. Any other integrity violation is a
+     * server-side problem and is left to the default error handling.
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     ResponseEntity<Void> handleDataIntegrityViolation(DataIntegrityViolationException e) {
-        log.info("Rejected conflicting project: {}", e.getMostSpecificCause().getMessage());
+        if (!isUniqueConstraintViolation(e)) {
+            throw e;
+        }
+        log.debug("Rejected duplicate project: {}", e.getMostSpecificCause().getMessage());
         return ResponseEntity.status(CONFLICT).build();
+    }
+
+    static boolean isUniqueConstraintViolation(DataIntegrityViolationException e) {
+        return e.getCause() instanceof ConstraintViolationException violation
+                && violation.getKind() == ConstraintKind.UNIQUE;
     }
 
     private SdlcSystem findSdlcSystem(long systemId) throws NotFoundException {
@@ -131,7 +141,10 @@ public class ProjectRestController {
     @Getter
     @NoArgsConstructor
     static class PatchedProject {
+        @Size(max = Project.MAX_TEXT_LENGTH)
+        @Pattern(regexp = "(?s).*\\S.*", message = "must not be blank")
         private String externalId;
+        @Size(max = Project.MAX_TEXT_LENGTH)
         private String name;
         private SdlcSystem sdlcSystem;
         private boolean isNameDirty = false;

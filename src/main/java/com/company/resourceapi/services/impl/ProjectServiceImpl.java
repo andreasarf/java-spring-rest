@@ -4,7 +4,6 @@ import com.company.resourceapi.entities.Project;
 import com.company.resourceapi.exceptions.NotFoundException;
 import com.company.resourceapi.repositories.ProjectRepository;
 import com.company.resourceapi.services.ProjectService;
-import java.time.Instant;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,8 +30,7 @@ public class ProjectServiceImpl implements ProjectService {
 		return projectRepository.findById(id);
 	}
 
-	public Optional<Project> updateProject(Project updatedProject) {
-		updatedProject.setLastModifiedDate(Instant.now());
-		return Optional.of(projectRepository.save(updatedProject));
+	public Project updateProject(Project updatedProject) {
+		return projectRepository.save(updatedProject);
 	}
 }
