@@ -1,5 +1,6 @@
 package com.company.resourceapi.controllers;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
@@ -11,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -291,14 +294,35 @@ public class ProjectRestControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
-    @Test
-    void givenControlCharacterExternalIdWhenPatchedThenReturnStatusBadRequest() throws Exception {
-        String requestUri = String.format(ENDPOINT_WITH_ID, 1);
+    @ParameterizedTest
+    @ValueSource(strings = {"\\u0001", "\\u3000", "\\t"})
+    void givenUnusualExternalIdThenPostAndPatchApplySameRule(String externalId) throws Exception {
+        int postStatus = mockMvc.perform(post(ProjectRestController.ENDPOINT)
+                .content(String.format(PROJECT_JSON_TEMPLATE, externalId, "Name", 2))
+                .contentType(MediaType.APPLICATION_JSON))
+                .andReturn().getResponse().getStatus();
+        int patchStatus = mockMvc.perform(patch(String.format(ENDPOINT_WITH_ID, 3))
+                .content(String.format("{\"externalId\": \"%s\"}", externalId))
+                .contentType(MediaType.APPLICATION_JSON))
+                .andReturn().getResponse().getStatus();
 
+        assertThat(postStatus == 400).isEqualTo(patchStatus == 400);
+    }
+
+    @Test
+    void givenRejectedPatchThenProjectIsUnchanged() throws Exception {
+        final long PROJECT_ID = 2;
+        String requestUri = String.format(ENDPOINT_WITH_ID, PROJECT_ID);
+
+        // valid externalId but unknown SDLC system: 404 after the externalId was applied
         mockMvc.perform(patch(requestUri)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"externalId\": \"\\u0001\"}"))
-                .andExpect(status().isBadRequest());
+                .content("{\"externalId\": \"REJECTED\", \"sdlcSystem\": {\"id\": 999}}"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get(requestUri))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(EXTERNALID_JPATH, equalTo("PROJECTX")));
     }
 
     @Test

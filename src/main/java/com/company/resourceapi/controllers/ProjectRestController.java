@@ -1,5 +1,6 @@
 package com.company.resourceapi.controllers;
 
+import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.CREATED;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
@@ -13,8 +14,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.AssertTrue;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.Validator;
 import java.net.URI;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -49,6 +49,7 @@ public class ProjectRestController {
 
     private final ProjectService projectService;
     private final SdlcSystemService sdlcSystemService;
+    private final Validator validator;
 
     @Operation(summary = "Get a Project")
     @GetMapping(ENDPOINT_ID)
@@ -65,6 +66,7 @@ public class ProjectRestController {
             @RequestBody Project project) throws NotFoundException {
         var sdlcSystem = sdlcSystemService.getSdlcSystem(project.getSdlcSystem().getId());
 
+        // Checked up front for a clean 409; the unique key still guards against concurrent requests
         if (projectService.getProject(project.getExternalId(), sdlcSystem.getId()).isPresent()) {
             return ResponseEntity.status(CONFLICT).build();
         }
@@ -82,6 +84,7 @@ public class ProjectRestController {
             @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
             @PathVariable(PATH_VARIABLE_ID) long projectId,
             @Valid @RequestBody PatchedProject patchedProject) throws NotFoundException {
+        // Detached (open-in-view is off), so rejected changes below are never flushed
         var project = projectService.getProject(projectId);
 
         if (patchedProject.isNameDirty()) {
@@ -93,8 +96,15 @@ public class ProjectRestController {
         }
 
         if (patchedProject.isSdlcSystemDirty()) {
-            project.setSdlcSystem(
-                    sdlcSystemService.getSdlcSystem(patchedProject.getSdlcSystem().getId()));
+            var patchedSystem = patchedProject.getSdlcSystem();
+            project.setSdlcSystem(patchedSystem == null
+                    ? null : sdlcSystemService.getSdlcSystem(patchedSystem.getId()));
+        }
+
+        // Validate the patched project against the same constraints as POST
+        var violations = validator.validate(project);
+        if (!violations.isEmpty()) {
+            throw new jakarta.validation.ConstraintViolationException(violations);
         }
 
         if ((patchedProject.isExternalIdDirty() || patchedProject.isSdlcSystemDirty())
@@ -106,6 +116,12 @@ public class ProjectRestController {
         }
 
         return ResponseEntity.ok(projectService.updateProject(project));
+    }
+
+    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+    ResponseEntity<Void> handleInvalidPatch(jakarta.validation.ConstraintViolationException e) {
+        log.debug(e.getMessage());
+        return ResponseEntity.status(BAD_REQUEST).build();
     }
 
     @ExceptionHandler(NotFoundException.class)
@@ -140,9 +156,7 @@ public class ProjectRestController {
     @Getter
     @NoArgsConstructor
     static class PatchedProject {
-        @Size(max = Project.MAX_TEXT_LENGTH)
         private String externalId;
-        @Size(max = Project.MAX_TEXT_LENGTH)
         private String name;
         private SdlcSystem sdlcSystem;
         private boolean isNameDirty = false;
@@ -162,18 +176,6 @@ public class ProjectRestController {
         public void setSdlcSystem(SdlcSystem sdlcSystem) {
             this.sdlcSystem = sdlcSystem;
             isSdlcSystemDirty = true;
-        }
-
-        /** Same rule as {@code @NotBlank} on {@link Project#getExternalId()}, applied only if patched. */
-        @AssertTrue(message = "externalId must not be blank")
-        boolean isExternalIdPresentIfPatched() {
-            return !isExternalIdDirty || (externalId != null && !externalId.trim().isEmpty());
-        }
-
-        /** A project always belongs to an SDLC system, so it can be replaced but not removed. */
-        @AssertTrue(message = "sdlcSystem must not be null")
-        boolean isSdlcSystemPresentIfPatched() {
-            return !isSdlcSystemDirty || sdlcSystem != null;
         }
     }
 }
