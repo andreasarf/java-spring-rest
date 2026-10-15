@@ -8,3 +8,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      maven-minor-and-patch:
+        update-types: [ "minor", "patch" ]
