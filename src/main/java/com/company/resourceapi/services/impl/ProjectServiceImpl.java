@@ -38,6 +38,8 @@ public class ProjectServiceImpl implements ProjectService {
 	@Transactional(rollbackFor = NotFoundException.class)
 	public Project updateProject(long id, ProjectUpdate update) throws NotFoundException {
 		var project = getProject(id);
+		var externalIdBefore = project.getExternalId();
+		var sdlcSystemBefore = project.getSdlcSystem();
 		update.applyTo(project);
 
 		var violations = validator.validate(project);
@@ -45,7 +47,9 @@ public class ProjectServiceImpl implements ProjectService {
 			throw new ConstraintViolationException(violations);
 		}
 
-		if (projectRepository
+		boolean keyChanged = !project.getExternalId().equals(externalIdBefore)
+				|| project.getSdlcSystem().getId() != sdlcSystemBefore.getId();
+		if (keyChanged && projectRepository
 				.findByExternalIdAndSdlcSystemId(project.getExternalId(), project.getSdlcSystem().getId())
 				.filter(existingProject -> existingProject.getId() != id)
 				.isPresent()) {

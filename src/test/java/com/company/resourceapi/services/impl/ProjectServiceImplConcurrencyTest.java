@@ -40,18 +40,23 @@ class ProjectServiceImplConcurrencyTest {
         var otherRequest = new TransactionTemplate(transactionManager);
         otherRequest.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 
-        // when: another request renames the project after this update has loaded it
-        projectService.updateProject(projectId, loaded -> {
-            otherRequest.executeWithoutResult(status -> {
-                var concurrent = projectRepository.findById(projectId).orElseThrow();
-                concurrent.setName("Renamed concurrently");
+        try {
+            // when: another request renames the project after this update has loaded it
+            projectService.updateProject(projectId, loaded -> {
+                otherRequest.executeWithoutResult(status -> {
+                    var concurrent = projectRepository.findById(projectId).orElseThrow();
+                    concurrent.setName("Renamed concurrently");
+                });
+                loaded.setExternalId("CONCURRENT-EDITED");
             });
-            loaded.setExternalId("CONCURRENT-EDITED");
-        });
 
-        // then
-        var stored = projectRepository.findById(projectId).orElseThrow();
-        assertThat(stored.getExternalId()).isEqualTo("CONCURRENT-EDITED");
-        assertThat(stored.getName()).isEqualTo("Renamed concurrently");
+            // then
+            var stored = projectRepository.findById(projectId).orElseThrow();
+            assertThat(stored.getExternalId()).isEqualTo("CONCURRENT-EDITED");
+            assertThat(stored.getName()).isEqualTo("Renamed concurrently");
+        } finally {
+            // the context (and its in-memory database) is shared with other test classes
+            projectRepository.deleteById(projectId);
+        }
     }
 }
