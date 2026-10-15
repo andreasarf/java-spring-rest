@@ -49,7 +49,7 @@ public class ProjectRestController {
     @Operation(summary = "Get a Project")
     @GetMapping(ENDPOINT_ID)
     public ResponseEntity<Project> getProject(
-            @Parameter(name = API_PARAM_ID, required = true)
+            @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
             @PathVariable(PATH_VARIABLE_ID) final long projectId) {
         try {
             return ResponseEntity.status(OK).body(projectService.getProject(projectId));
@@ -82,7 +82,7 @@ public class ProjectRestController {
     @Operation(summary = "Update a Project")
     @PatchMapping(ENDPOINT_ID)
     public ResponseEntity<Project> updateProject(
-            @Parameter(name = API_PARAM_ID, required = true)
+            @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
             @PathVariable(PATH_VARIABLE_ID) long projectId,
             @Valid @RequestBody PatchedProject patchedProject) {
 
