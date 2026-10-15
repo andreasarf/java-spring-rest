@@ -1,4 +1,8 @@
 # java-spring-rest
+![CI](https://github.com/andreasarf/java-spring-rest/actions/workflows/ci.yml/badge.svg)
+![Coverage](.github/badges/jacoco.svg)
+![Branches](.github/badges/branches.svg)
+
 Example for implementation Rest API using Spring Boot.
 
 ## Requirement
