@@ -1,5 +1,5 @@
 # java-spring-rest
-![CI](https://github.com/andreasarf/java-spring-rest/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/andreasarf/java-spring-rest/actions/workflows/ci.yml/badge.svg?branch=main)
 ![Coverage](.github/badges/jacoco.svg)
 ![Branches](.github/badges/branches.svg)
 
