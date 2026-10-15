@@ -10,7 +10,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.company.resourceapi.entities.SdlcSystem;
 import com.company.resourceapi.services.ProjectService;
 import com.company.resourceapi.services.SdlcSystemService;
+import java.sql.SQLException;
 import java.util.Optional;
+import org.hibernate.exception.ConstraintViolationException;
+import org.hibernate.exception.ConstraintViolationException.ConstraintKind;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -38,8 +41,9 @@ class ProjectRestControllerConflictTest {
         sdlcSystem.setId(1);
         when(sdlcSystemService.getSdlcSystem(1)).thenReturn(Optional.of(sdlcSystem));
         when(projectService.getProject(anyString(), anyLong())).thenReturn(Optional.empty());
-        when(projectService.createProject(any()))
-                .thenThrow(new DataIntegrityViolationException("Unique index or primary key violation"));
+        when(projectService.createProject(any())).thenThrow(new DataIntegrityViolationException(
+                "Unique index or primary key violation", new ConstraintViolationException(
+                        "duplicate", new SQLException(), ConstraintKind.UNIQUE, "system_project")));
 
         // when / then
         mockMvc.perform(post(ProjectRestController.ENDPOINT)

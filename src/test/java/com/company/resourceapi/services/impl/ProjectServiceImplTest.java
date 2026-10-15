@@ -1,6 +1,6 @@
 package com.company.resourceapi.services.impl;
 
-import static org.mockito.ArgumentMatchers.any;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,17 +27,17 @@ public class ProjectServiceImplTest {
     }
 
     @Test
-    void givenProjectWhenUpdateProjectThenSetModifiedLastDate() {
+    void givenProjectWhenUpdateProjectThenReturnSavedProject() {
         // given
         Project updatedProject = mock(Project.class);
         Project resultantProject = mock(Project.class);
         when(projectRepository.save(updatedProject)).thenReturn(resultantProject);
 
         // when
-        projectService.updateProject(updatedProject);
+        Project result = projectService.updateProject(updatedProject);
 
         // then
-        verify(updatedProject).setLastModifiedDate(any());
+        assertThat(result).isSameAs(resultantProject);
         verify(projectRepository).save(updatedProject);
     }
 }

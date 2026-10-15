@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -28,6 +29,9 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @NoArgsConstructor
 public class Project {
 
+    /** Length of the varchar columns in schema.sql. */
+    public static final int MAX_TEXT_LENGTH = 255;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @JsonProperty(access = READ_ONLY)
@@ -35,9 +39,11 @@ public class Project {
 
     @Column(name = "external_id", nullable = false)
     @NotBlank
+    @Size(max = MAX_TEXT_LENGTH)
     private String externalId;
 
     @Column(name = "name")
+    @Size(max = MAX_TEXT_LENGTH)
     private String name;
 
     @ManyToOne
@@ -48,10 +54,10 @@ public class Project {
     @Column(name = "created_date", nullable = false)
     @CreatedDate
     @JsonProperty(access = READ_ONLY)
-    private Instant createdDate = Instant.now();
+    private Instant createdDate;
 
     @Column(name = "last_modified_date", nullable = false)
     @LastModifiedDate
     @JsonProperty(access = READ_ONLY)
-    private Instant lastModifiedDate = Instant.now();
+    private Instant lastModifiedDate;
 }

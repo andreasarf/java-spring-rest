@@ -10,5 +10,5 @@ public interface ProjectService {
     Project createProject(Project project);
     Optional<Project> getProject(String externalId, long sdlcSystemId);
     Optional<Project> getProjectStream(long id);
-    Optional<Project> updateProject(Project updatedProject);
+    Project updateProject(Project updatedProject);
 }

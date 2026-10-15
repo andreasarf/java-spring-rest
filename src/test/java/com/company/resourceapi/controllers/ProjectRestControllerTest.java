@@ -207,8 +207,8 @@ public class ProjectRestControllerTest {
 
     @Test
     void givenUnchangedExternalIdWhenPatchedThenReturnStatusOk() throws Exception {
-        final long PROJECT_ID = 6;
-        final String UNCHANGED_EXTERNALID = "PROJECTONE";
+        final long PROJECT_ID = 8;
+        final String UNCHANGED_EXTERNALID = "PROJECTTHREE";
         String requestUri = String.format(ENDPOINT_WITH_ID, PROJECT_ID);
         final String jsonContent = String.format("{\"externalId\": \"%s\"}", UNCHANGED_EXTERNALID);
 
@@ -241,5 +241,42 @@ public class ProjectRestControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(SYSTEM_ID_JPATH, equalTo(2)))
                 .andExpect(jsonPath("$.sdlcSystem.baseUrl", equalTo("http://bugzilla.company.com")));
+    }
+
+    @Test
+    void givenTooLongExternalIdWhenPostThenReturnStatusBadRequest() throws Exception {
+        final String jsonContent = String.format(PROJECT_JSON_TEMPLATE, "X".repeat(256), "Name", 1);
+
+        mockMvc.perform(post(ProjectRestController.ENDPOINT)
+                .content(jsonContent)
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void givenTooLongNameWhenPatchedThenReturnStatusBadRequest() throws Exception {
+        String requestUri = String.format(ENDPOINT_WITH_ID, 1);
+
+        mockMvc.perform(patch(requestUri)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(String.format("{\"name\": \"%s\"}", "N".repeat(256))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void givenBlankExternalIdWhenPatchedThenReturnStatusBadRequest() throws Exception {
+        String requestUri = String.format(ENDPOINT_WITH_ID, 1);
+
+        mockMvc.perform(patch(requestUri)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"externalId\": \"  \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void givenRepositoryPathWhenGetThenReturnStatusNotFound() throws Exception {
+        // Repositories must only be reachable through the validated controller endpoints
+        mockMvc.perform(get("/projects"))
+                .andExpect(status().isNotFound());
     }
 }
