@@ -12,8 +12,12 @@ import org.springframework.stereotype.Repository;
 public interface ProjectRepository extends JpaRepository<Project, Long>{
 
     Optional<Project> findBySdlcSystemIdAndId(long sdlcSystemId, long projectId);
-
-    /** Doesn't flush pending changes first, so it can check a modified project before it is saved. */
-    @QueryHints(@QueryHint(name = HibernateHints.HINT_FLUSH_MODE, value = "COMMIT"))
     Optional<Project> findByExternalIdAndSdlcSystemId(String externalId, long sdlcSystemId);
+
+    /**
+     * Finds another project with the same key. Doesn't flush pending changes first, so it can
+     * check a modified project before that change is written.
+     */
+    @QueryHints(@QueryHint(name = HibernateHints.HINT_FLUSH_MODE, value = "COMMIT"))
+    boolean existsByExternalIdAndSdlcSystemIdAndIdNot(String externalId, long sdlcSystemId, long id);
 }
