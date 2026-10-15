@@ -1,5 +1,8 @@
 package com.company.resourceapi.entities;
 
+import static com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
@@ -27,6 +30,7 @@ public class Project {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @JsonProperty(access = READ_ONLY)
     private long id;
 
     @Column(name = "external_id", nullable = false)
@@ -43,9 +47,11 @@ public class Project {
 
     @Column(name = "created_date", nullable = false)
     @CreatedDate
+    @JsonProperty(access = READ_ONLY)
     private Instant createdDate = Instant.now();
 
     @Column(name = "last_modified_date", nullable = false)
     @LastModifiedDate
+    @JsonProperty(access = READ_ONLY)
     private Instant lastModifiedDate = Instant.now();
 }
