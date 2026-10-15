@@ -11,16 +11,15 @@ import com.company.resourceapi.entities.SdlcSystem;
 import com.company.resourceapi.exceptions.NotFoundException;
 import com.company.resourceapi.services.ProjectService;
 import com.company.resourceapi.services.SdlcSystemService;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiParam;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import java.net.URI;
-import java.util.Optional;
-import javax.validation.Valid;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -32,7 +31,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping(ProjectRestController.ENDPOINT)
-@Api(produces = MediaType.APPLICATION_JSON_VALUE, tags = "Project")
+@Tag(name = "Project")
+@RequiredArgsConstructor
+@Slf4j
 public class ProjectRestController {
 
     public static final String ENDPOINT = "/api/v2/projects";
@@ -42,62 +43,51 @@ public class ProjectRestController {
     private static final String API_PARAM_ID = "ID";
     private static final String LOCATION_HEADER = ENDPOINT + "/%d";
 
-    @Autowired
-    private ProjectService projectService;
+    private final ProjectService projectService;
+    private final SdlcSystemService sdlcSystemService;
 
-    @Autowired
-    private SdlcSystemService sdlcSystemService;
-
-    @ApiOperation("Get a Project")
+    @Operation(summary = "Get a Project")
     @GetMapping(ENDPOINT_ID)
     public ResponseEntity<Project> getProject(
-            @ApiParam(name = API_PARAM_ID, required = true)
+            @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
             @PathVariable(PATH_VARIABLE_ID) final long projectId) {
-        Project project;
         try {
-            project = projectService.getProject(projectId);
+            return ResponseEntity.status(OK).body(projectService.getProject(projectId));
         } catch (NotFoundException e) {
-            System.err.println(e.getMessage());
+            log.debug(e.getMessage());
             return ResponseEntity.status(NOT_FOUND).build();
         }
-
-        return ResponseEntity.status(OK).body(project);
     }
 
-    @ApiOperation("Create a Project")
+    @Operation(summary = "Create a Project")
     @PostMapping
     public ResponseEntity<Project> createProject(
             @Valid
             @RequestBody Project project) {
+        long systemId = project.getSdlcSystem().getId();
 
-        System.out.println(project.getSdlcSystem());
-
-        if (sdlcSystemService.getSdlcSystem(project.getSdlcSystem().getId()).isPresent()) {
-            if (projectService.getProject(project.getExternalId(), project.getSdlcSystem().getId())
-                    .isPresent()) {
-                return ResponseEntity.status(CONFLICT).build();
-            } else {
-                return Optional.of(projectService.createProject(project))
-                        .map(resultantProject -> ResponseEntity.status(CREATED).location(
-                                URI.create(
-                                        String.format(LOCATION_HEADER, resultantProject.getId())))
-                                .body(resultantProject))
-                        .orElse(ResponseEntity.status(BAD_REQUEST).build());
-            }
-        } else {
+        if (sdlcSystemService.getSdlcSystem(systemId).isEmpty()) {
             return ResponseEntity.status(NOT_FOUND).build();
         }
+        if (projectService.getProject(project.getExternalId(), systemId).isPresent()) {
+            return ResponseEntity.status(CONFLICT).build();
+        }
+
+        var createdProject = projectService.createProject(project);
+        return ResponseEntity.status(CREATED)
+                .location(URI.create(LOCATION_HEADER.formatted(createdProject.getId())))
+                .body(createdProject);
     }
 
-    @ApiOperation("Update a Project")
+    @Operation(summary = "Update a Project")
     @PatchMapping(ENDPOINT_ID)
     public ResponseEntity<Project> updateProject(
-            @ApiParam(name = API_PARAM_ID, required = true)
+            @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
             @PathVariable(PATH_VARIABLE_ID) long projectId,
             @Valid @RequestBody PatchedProject patchedProject) {
 
         try {
-            Project project = projectService.getProject(projectId);
+            var project = projectService.getProject(projectId);
 
             if (patchedProject.isNameDirty()) {
                 project.setName(patchedProject.getName());
@@ -121,16 +111,15 @@ public class ProjectRestController {
                     .getProject(project.getExternalId(), project.getSdlcSystem().getId())
                     .isPresent()) {
                 return ResponseEntity.status(CONFLICT).build();
-            } else {
-                return projectService.updateProject(project)
-                        .map(resultantProject -> ResponseEntity.status(OK).body(resultantProject))
-                        .orElse(ResponseEntity.status(BAD_REQUEST).build());
             }
-        } catch (NotFoundException e) {
-            System.err.println(e.getMessage());
-        }
 
-        return ResponseEntity.status(NOT_FOUND).build();
+            return projectService.updateProject(project)
+                    .map(resultantProject -> ResponseEntity.status(OK).body(resultantProject))
+                    .orElseGet(() -> ResponseEntity.status(BAD_REQUEST).build());
+        } catch (NotFoundException e) {
+            log.debug(e.getMessage());
+            return ResponseEntity.status(NOT_FOUND).build();
+        }
     }
 
     @Getter
