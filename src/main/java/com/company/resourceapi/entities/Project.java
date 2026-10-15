@@ -1,5 +1,8 @@
 package com.company.resourceapi.entities;
 
+import static com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
@@ -11,9 +14,11 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -23,17 +28,24 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @EntityListeners(AuditingEntityListener.class)
 @Data
 @NoArgsConstructor
+@DynamicUpdate
 public class Project {
+
+    /** Length of the varchar columns in schema.sql. */
+    public static final int MAX_TEXT_LENGTH = 255;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @JsonProperty(access = READ_ONLY)
     private long id;
 
     @Column(name = "external_id", nullable = false)
     @NotBlank
+    @Size(max = MAX_TEXT_LENGTH)
     private String externalId;
 
     @Column(name = "name")
+    @Size(max = MAX_TEXT_LENGTH)
     private String name;
 
     @ManyToOne
@@ -43,9 +55,11 @@ public class Project {
 
     @Column(name = "created_date", nullable = false)
     @CreatedDate
-    private Instant createdDate = Instant.now();
+    @JsonProperty(access = READ_ONLY)
+    private Instant createdDate;
 
     @Column(name = "last_modified_date", nullable = false)
     @LastModifiedDate
-    private Instant lastModifiedDate = Instant.now();
+    @JsonProperty(access = READ_ONLY)
+    private Instant lastModifiedDate;
 }
