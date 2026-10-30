@@ -24,7 +24,12 @@ The H2 console (`/h2-console`, JDBC URL `jdbc:h2:mem:test`) is available while r
 - `404` if the project is unknown here or in the SDLC system
 - `502` if the SDLC system fails or doesn't answer within `spring.http.clients.read-timeout`
 
-The client is tested against [WireMock](https://wiremock.org/) (`SdlcProjectClientTest`, `ExternalProjectIntegrationTest`).
+Requests go through a pooled Apache HttpClient 5 (`PoolingHttpClientConnectionManager`), so connections to an
+SDLC system are kept alive and reused. The pool is sized with `resourceapi.http-client.pool.*`
+(`max-total`, `max-per-route`, `idle-timeout`, `time-to-live`); see `HttpClientPoolConfig`.
+
+The client is tested against [WireMock](https://wiremock.org/) (`SdlcProjectClientTest`, `ExternalProjectIntegrationTest`,
+and `SdlcProjectClientPoolingTest`, which counts the connections actually opened).
 
 ## Testing
 There are scripts to test the Rest API in Postman.
