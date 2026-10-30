@@ -1,10 +1,13 @@
 package com.company.resourceapi.controllers;
 
+import static org.springframework.http.HttpStatus.BAD_GATEWAY;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.CREATED;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
+import com.company.resourceapi.clients.ExternalProject;
+import com.company.resourceapi.clients.SdlcProjectClient;
 import com.company.resourceapi.entities.Project;
 import com.company.resourceapi.entities.SdlcSystem;
 import com.company.resourceapi.exceptions.ConflictException;
@@ -32,6 +35,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -50,6 +54,7 @@ public class ProjectRestController {
 
     private final ProjectService projectService;
     private final SdlcSystemService sdlcSystemService;
+    private final SdlcProjectClient sdlcProjectClient;
 
     @Operation(summary = "Get a Project")
     @GetMapping(ENDPOINT_ID)
@@ -57,6 +62,17 @@ public class ProjectRestController {
             @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
             @PathVariable(PATH_VARIABLE_ID) final long projectId) throws NotFoundException {
         return ResponseEntity.ok(projectService.getProject(projectId));
+    }
+
+    @Operation(summary = "Get a Project as described by its SDLC system")
+    @GetMapping(ENDPOINT_ID + "/external")
+    public ResponseEntity<ExternalProject> getExternalProject(
+            @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
+            @PathVariable(PATH_VARIABLE_ID) final long projectId) throws NotFoundException {
+        var project = projectService.getProject(projectId);
+        return sdlcProjectClient.fetchProject(project.getSdlcSystem(), project.getExternalId())
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(NOT_FOUND).build());
     }
 
     @Operation(summary = "Create a Project")
@@ -112,6 +128,13 @@ public class ProjectRestController {
     ResponseEntity<Void> handleNotFound(NotFoundException e) {
         log.debug(e.getMessage());
         return ResponseEntity.status(NOT_FOUND).build();
+    }
+
+    /** The SDLC system answered with an error, or couldn't be reached in time. */
+    @ExceptionHandler(RestClientException.class)
+    ResponseEntity<Void> handleSdlcSystemFailure(RestClientException e) {
+        log.warn("SDLC system request failed: {}", e.getMessage());
+        return ResponseEntity.status(BAD_GATEWAY).build();
     }
 
     @ExceptionHandler(ConflictException.class)
