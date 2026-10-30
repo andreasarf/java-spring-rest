@@ -42,12 +42,13 @@ and `SdlcProjectClientPoolingTest`, which counts the connections actually opened
 ## Tracing
 Every request gets a trace id ([Micrometer Tracing](https://micrometer.io/docs/tracing) with Brave, W3C trace context):
 
-- an incoming `traceparent` header is continued, otherwise a new trace starts
+- an incoming `traceparent` (or B3) header is continued, otherwise a new trace starts
 - the trace id is returned in the `X-Trace-Id` response header, also on errors
 - log lines carry `[traceId-spanId]`, so a reported `X-Trace-Id` leads straight to its log lines
 - outgoing `RestClient` calls (e.g. to SDLC systems) send `traceparent`, so the trace continues there
 
-No spans are exported; add a reporter (e.g. Zipkin or OTLP) to send them to a tracing backend.
+No spans are exported; add a reporter (e.g. Zipkin or OTLP) to send them to a tracing backend, and lower
+`management.tracing.sampling.probability` (set to `1.0` here) to what that backend can take.
 
 ## Testing
 There are scripts to test the Rest API in Postman.
