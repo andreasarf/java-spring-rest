@@ -36,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -133,7 +134,11 @@ public class ProjectRestController {
     /** The SDLC system answered with an error, or couldn't be reached in time. */
     @ExceptionHandler(RestClientException.class)
     ResponseEntity<Void> handleSdlcSystemFailure(RestClientException e) {
-        log.warn("SDLC system request failed: {}", e.getMessage());
+        // the status only: an error response's message would include the upstream body
+        var reason = e instanceof RestClientResponseException response
+                ? "HTTP " + response.getStatusCode().value()
+                : e.getMessage();
+        log.warn("SDLC system request failed: {}", reason);
         return ResponseEntity.status(BAD_GATEWAY).build();
     }
 

@@ -1,6 +1,7 @@
 package com.company.resourceapi.clients;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.noContent;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 class SdlcProjectClientTest {
 
@@ -26,7 +28,7 @@ class SdlcProjectClientTest {
             .options(wireMockConfig().dynamicPort())
             .build();
 
-    private final SdlcProjectClient client = new SdlcProjectClient(RestClient.builder());
+    private final SdlcProjectClient client = new SdlcProjectClient(RestClient.create());
 
     private SdlcSystem sdlcSystem;
 
@@ -86,5 +88,32 @@ class SdlcProjectClientTest {
         // then
         assertThat(project).map(ExternalProject::key).contains("A B/1");
         sdlcSystemServer.verify(1, getRequestedFor(urlEqualTo("/rest/api/2/project/A%20B%2F1")));
+    }
+
+    @Test
+    void givenBaseUrlWithTrailingSlashWhenFetchProjectThenAvoidDoubleSlash() {
+        sdlcSystem.setBaseUrl(sdlcSystemServer.baseUrl() + "/");
+        sdlcSystemServer.stubFor(get(urlEqualTo("/rest/api/2/project/SAMPLEPROJECT"))
+                .willReturn(okJson("{\"key\": \"SAMPLEPROJECT\"}")));
+
+        assertThat(client.fetchProject(sdlcSystem, "SAMPLEPROJECT")).isPresent();
+    }
+
+    @Test
+    void givenBaseUrlWithContextPathWhenFetchProjectThenKeepIt() {
+        sdlcSystem.setBaseUrl(sdlcSystemServer.baseUrl() + "/jira");
+        sdlcSystemServer.stubFor(get(urlEqualTo("/jira/rest/api/2/project/SAMPLEPROJECT"))
+                .willReturn(okJson("{\"key\": \"SAMPLEPROJECT\"}")));
+
+        assertThat(client.fetchProject(sdlcSystem, "SAMPLEPROJECT")).isPresent();
+    }
+
+    @Test
+    void givenSuccessWithoutBodyWhenFetchProjectThenThrow() {
+        // a success without a project is a broken answer, not "unknown project"
+        sdlcSystemServer.stubFor(get(urlEqualTo("/rest/api/2/project/SAMPLEPROJECT")).willReturn(noContent()));
+
+        assertThatThrownBy(() -> client.fetchProject(sdlcSystem, "SAMPLEPROJECT"))
+                .isInstanceOf(RestClientException.class);
     }
 }

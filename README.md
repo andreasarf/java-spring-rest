@@ -22,11 +22,16 @@ The H2 console (`/h2-console`, JDBC URL `jdbc:h2:mem:test`) is available while r
 
 - `200` with the system's `key`, `name` and `description`
 - `404` if the project is unknown here or in the SDLC system
-- `502` if the SDLC system fails or doesn't answer within `spring.http.clients.read-timeout`
+- `502` if the SDLC system fails or answers without a project, if connecting takes longer than
+  `spring.http.clients.connect-timeout`, if the response stalls for longer than
+  `spring.http.clients.read-timeout` (a per-read socket timeout, not a total deadline), or if no pooled
+  connection frees up within `resourceapi.http-client.pool.connection-request-timeout`
 
 Requests go through a pooled Apache HttpClient 5 (`PoolingHttpClientConnectionManager`), so connections to an
 SDLC system are kept alive and reused. The pool is sized with `resourceapi.http-client.pool.*`
-(`max-total`, `max-per-route`, `idle-timeout`, `time-to-live`); see `HttpClientPoolConfig`.
+(`max-total` 50, `max-per-route` 10, `connection-request-timeout` 2s, `idle-timeout` 30s, `time-to-live` 5m);
+see `HttpClientPoolProperties` and `HttpClientPoolConfig`. All `RestClient` calls share Boot's single
+request factory, so there is one pool for the application, closed on shutdown.
 
 The client is tested against [WireMock](https://wiremock.org/) (`SdlcProjectClientTest`, `ExternalProjectIntegrationTest`,
 and `SdlcProjectClientPoolingTest`, which counts the connections actually opened).

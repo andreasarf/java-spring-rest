@@ -1,6 +1,7 @@
 package com.company.resourceapi.config;
 
 import org.apache.hc.core5.util.TimeValue;
+import org.apache.hc.core5.util.Timeout;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.http.client.HttpComponentsClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.autoconfigure.ClientHttpRequestFactoryBuilderCustomizer;
@@ -27,6 +28,9 @@ public class HttpClientPoolConfig {
                 // of replacing it, as the pool builder's setConnectionTimeToLive would
                 .withConnectionConfigCustomizer(connectionConfig -> connectionConfig
                         .setTimeToLive(TimeValue.of(pool.timeToLive())))
+                // HttpClient would otherwise wait up to 3 minutes for a connection from a full pool
+                .withDefaultRequestConfigCustomizer(requestConfig -> requestConfig
+                        .setConnectionRequestTimeout(Timeout.of(pool.connectionRequestTimeout())))
                 .withHttpClientCustomizer(httpClient -> httpClient
                         .evictExpiredConnections()
                         .evictIdleConnections(TimeValue.of(pool.idleTimeout())));
