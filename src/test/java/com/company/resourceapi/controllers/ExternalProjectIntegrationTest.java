@@ -77,10 +77,22 @@ class ExternalProjectIntegrationTest {
 
     @Test
     void givenProjectUnknownToSdlcSystemWhenGetThenReturnStatusNotFound() throws Exception {
-        sdlcSystemServer.stubFor(WireMock.get(urlEqualTo(SDLC_PROJECT_URL)).willReturn(notFound()));
+        sdlcSystemServer.stubFor(WireMock.get(urlEqualTo(SDLC_PROJECT_URL))
+                .willReturn(notFound().withHeader("Content-Type", "application/json")
+                        .withBody("{\"errorMessages\": [\"No project could be found\"]}")));
 
         mockMvc.perform(get(endpoint))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void givenWrongBaseUrlWhenGetThenReturnStatusBadGateway() throws Exception {
+        // an HTML 404 from the web server is not the API saying "unknown project"
+        sdlcSystemServer.stubFor(WireMock.get(urlEqualTo(SDLC_PROJECT_URL))
+                .willReturn(notFound().withHeader("Content-Type", "text/html")));
+
+        mockMvc.perform(get(endpoint))
+                .andExpect(status().isBadGateway());
     }
 
     @Test
