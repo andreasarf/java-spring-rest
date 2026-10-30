@@ -37,7 +37,8 @@ public class TraceIdResponseHeaderFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
         var span = tracer.currentSpan();
-        if (span != null) {
+        // no span, or a no-op one (tracing off): no header rather than an empty one
+        if (span != null && !span.isNoop()) {
             // set before the chain runs: the header can't be added once the response is committed
             response.setHeader(TRACE_ID_HEADER, span.context().traceId());
         }
