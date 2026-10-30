@@ -39,6 +39,11 @@ injects uses Boot's single request factory, so there is one pool for the applica
 The client is tested against [WireMock](https://wiremock.org/) (`SdlcProjectClientTest`, `ExternalProjectIntegrationTest`,
 and `SdlcProjectClientPoolingTest`, which counts the connections actually opened).
 
+## API documentation
+The OpenAPI document is served at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`
+([springdoc-openapi](https://springdoc.org/)), generated from the controllers and their `@Operation`/`@Parameter`
+annotations. Only `/api/**` is documented.
+
 ## Tracing
 Every request gets a trace id ([Micrometer Tracing](https://micrometer.io/docs/tracing) with Brave, W3C trace context):
 
