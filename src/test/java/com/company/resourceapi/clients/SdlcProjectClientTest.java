@@ -13,10 +13,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.company.resourceapi.entities.SdlcSystem;
+import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -28,7 +30,7 @@ class SdlcProjectClientTest {
             .options(wireMockConfig().dynamicPort())
             .build();
 
-    private final SdlcProjectClient client = new SdlcProjectClient(RestClient.create());
+    private final SdlcProjectClient client = new SdlcProjectClient(RestClient.builder());
 
     private SdlcSystem sdlcSystem;
 
@@ -62,9 +64,50 @@ class SdlcProjectClientTest {
 
     @Test
     void givenUnknownProjectWhenFetchProjectThenReturnEmpty() {
-        sdlcSystemServer.stubFor(get(urlEqualTo("/rest/api/2/project/UNKNOWN")).willReturn(notFound()));
+        sdlcSystemServer.stubFor(get(urlEqualTo("/rest/api/2/project/UNKNOWN")).willReturn(jsonNotFound()));
 
         assertThat(client.fetchProject(sdlcSystem, "UNKNOWN")).isEmpty();
+    }
+
+    @Test
+    void givenNonApiNotFoundWhenFetchProjectThenThrow() {
+        // e.g. a wrong base URL: the web server answers, not the SDLC system's API
+        sdlcSystemServer.stubFor(get(urlEqualTo("/rest/api/2/project/SAMPLEPROJECT"))
+                .willReturn(notFound().withHeader("Content-Type", "text/html").withBody("<h1>Not Found</h1>")));
+
+        assertThatThrownBy(() -> client.fetchProject(sdlcSystem, "SAMPLEPROJECT"))
+                .isInstanceOf(HttpClientErrorException.NotFound.class);
+    }
+
+    @Test
+    void givenSuccessWithoutProjectFieldsWhenFetchProjectThenThrow() {
+        sdlcSystemServer.stubFor(get(urlEqualTo("/rest/api/2/project/SAMPLEPROJECT"))
+                .willReturn(okJson("{\"errorMessages\": [\"Login required\"]}")));
+
+        assertThatThrownBy(() -> client.fetchProject(sdlcSystem, "SAMPLEPROJECT"))
+                .isInstanceOf(RestClientException.class);
+    }
+
+    @Test
+    void givenBaseUrlWithEncodedCharactersWhenFetchProjectThenDoNotEncodeThemAgain() {
+        sdlcSystem.setBaseUrl(sdlcSystemServer.baseUrl() + "/my%20jira");
+        sdlcSystemServer.stubFor(get(urlEqualTo("/my%20jira/rest/api/2/project/SAMPLEPROJECT"))
+                .willReturn(okJson("{\"key\": \"SAMPLEPROJECT\"}")));
+
+        assertThat(client.fetchProject(sdlcSystem, "SAMPLEPROJECT")).isPresent();
+    }
+
+    @Test
+    void givenInvalidBaseUrlWhenFetchProjectThenThrowRestClientException() {
+        sdlcSystem.setBaseUrl("http://jira.company.com/{context}");
+
+        assertThatThrownBy(() -> client.fetchProject(sdlcSystem, "SAMPLEPROJECT"))
+                .isInstanceOf(RestClientException.class);
+    }
+
+    private static ResponseDefinitionBuilder jsonNotFound() {
+        return notFound().withHeader("Content-Type", "application/json")
+                .withBody("{\"errorMessages\": [\"No project could be found\"]}");
     }
 
     @Test

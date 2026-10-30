@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.company.resourceapi.entities.SdlcSystem;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
@@ -33,21 +34,25 @@ class SdlcProjectClientPoolExhaustionTest {
 
     @Test
     void givenExhaustedPoolWhenFetchProjectThenFailAfterConnectionRequestTimeout() {
-        // given: the single connection is busy for 1s with each request
+        // given: the single connection is busy for 2s with each request
         var sdlcSystem = new SdlcSystem();
         sdlcSystem.setBaseUrl(sdlcSystemServer.baseUrl());
         sdlcSystemServer.stubFor(get(urlPathMatching("/rest/api/2/project/.*"))
-                .willReturn(okJson("{\"key\": \"SLOW\"}").withFixedDelay(1_000)));
+                .willReturn(okJson("{\"key\": \"SLOW\"}").withFixedDelay(2_000)));
 
-        // when: two requests at once (all started before waiting on any)
+        // when: two requests released at the same moment
+        var start = new CyclicBarrier(2);
         try (var threads = Executors.newFixedThreadPool(2)) {
             var requests = IntStream.range(0, 2)
                     .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
                         try {
+                            start.await();
                             client.fetchProject(sdlcSystem, "SLOW" + i);
                             return "ok";
                         } catch (ResourceAccessException e) {
                             return "no connection";
+                        } catch (Exception e) {
+                            throw new IllegalStateException(e);
                         }
                     }, threads))
                     .toList();

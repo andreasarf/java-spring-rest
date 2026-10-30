@@ -16,13 +16,13 @@ import org.apache.hc.client5.http.impl.io.ManagedHttpClientConnectionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.http.client.HttpComponentsClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.autoconfigure.ClientHttpRequestFactoryBuilderCustomizer;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 /** Counts the TCP connections the client opens to a WireMock SDLC system. */
@@ -40,10 +40,7 @@ class SdlcProjectClientPoolingTest {
     private SdlcProjectClient client;
 
     @Autowired
-    private RestClient.Builder restClientBuilder;
-
-    @Autowired
-    private ClientHttpRequestFactory requestFactory;
+    private ObjectProvider<RestClient.Builder> restClientBuilders;
 
     private SdlcSystem sdlcSystem;
 
@@ -83,30 +80,50 @@ class SdlcProjectClientPoolingTest {
 
     @Test
     void givenConcurrentRequestsThenConnectionsPerRouteAreCapped() {
+        // a route (host) no other test uses, so the pool starts without idle connections for it
+        var coldRoute = new SdlcSystem();
+        coldRoute.setBaseUrl("http://127.0.0.1:" + sdlcSystemServer.getPort());
         int before = openedConnections.get();
 
         // 6 parallel requests against a per-route limit of 2: the rest wait for a free connection.
         // Own threads, since the common pool may have just one worker on a small CI runner.
         try (var threads = Executors.newFixedThreadPool(6)) {
             var requests = IntStream.range(0, 6)
-                    .mapToObj(i -> CompletableFuture.runAsync(() -> client.fetchProject(sdlcSystem, "PAR" + i), threads))
+                    .mapToObj(i -> CompletableFuture.runAsync(() -> client.fetchProject(coldRoute, "PAR" + i), threads))
                     .toArray(CompletableFuture[]::new);
             CompletableFuture.allOf(requests).join();
         }
 
-        assertThat(openedConnections.get() - before).isBetween(1, 2);
+        assertThat(openedConnections.get() - before).isEqualTo(2);
         assertThat(sdlcSystemServer.getAllServeEvents()).hasSizeGreaterThanOrEqualTo(6);
     }
 
     @Test
-    void givenClientsBuiltLikeTheApplicationOnesThenTheyShareOnePool() {
-        // a second client built the same way must reuse the first client's kept-alive connection
-        var otherClient = new SdlcProjectClient(restClientBuilder, requestFactory);
+    void givenAnyInjectedBuilderThenItUsesTheSharedPool() {
+        // a client from another injected builder must reuse the first client's kept-alive connection
+        var otherClient = new SdlcProjectClient(restClientBuilders.getObject());
         client.fetchProject(sdlcSystem, "WARM");
         int before = openedConnections.get();
 
         otherClient.fetchProject(sdlcSystem, "SHARED");
 
         assertThat(openedConnections.get() - before).isZero();
+    }
+
+    @Test
+    void givenMoreBuildersThenNoMoreHttpClientsAreCreated() {
+        // every pooled HttpClient starts an idle-connection evictor thread; there must be just one
+        long evictorsBefore = idleConnectionEvictorThreads();
+
+        IntStream.range(0, 3).forEach(i -> restClientBuilders.getObject().build());
+
+        assertThat(evictorsBefore).isPositive();
+        assertThat(idleConnectionEvictorThreads()).isEqualTo(evictorsBefore);
+    }
+
+    private static long idleConnectionEvictorThreads() {
+        return Thread.getAllStackTraces().keySet().stream()
+                .filter(thread -> thread.getName().startsWith("idle-connection-evictor"))
+                .count();
     }
 }

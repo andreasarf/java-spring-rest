@@ -1,10 +1,12 @@
 package com.company.resourceapi.controllers;
 
+import static org.springframework.http.HttpHeaders.RETRY_AFTER;
 import static org.springframework.http.HttpStatus.BAD_GATEWAY;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.CREATED;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
+import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
 
 import com.company.resourceapi.clients.ExternalProject;
 import com.company.resourceapi.clients.SdlcProjectClient;
@@ -24,6 +26,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.hibernate.exception.ConstraintViolationException.ConstraintKind;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
@@ -134,6 +137,11 @@ public class ProjectRestController {
     /** The SDLC system answered with an error, or couldn't be reached in time. */
     @ExceptionHandler(RestClientException.class)
     ResponseEntity<Void> handleSdlcSystemFailure(RestClientException e) {
+        if (isConnectionPoolExhausted(e)) {
+            // our own connection limit, not the SDLC system's fault
+            log.warn("No pooled connection to the SDLC system became free in time");
+            return ResponseEntity.status(SERVICE_UNAVAILABLE).header(RETRY_AFTER, "1").build();
+        }
         // the status only: an error response's message would include the upstream body
         var reason = e instanceof RestClientResponseException response
                 ? "HTTP " + response.getStatusCode().value()
@@ -160,6 +168,15 @@ public class ProjectRestController {
         }
         log.debug("Rejected duplicate project: {}", e.getMostSpecificCause().getMessage());
         return ResponseEntity.status(CONFLICT).build();
+    }
+
+    private static boolean isConnectionPoolExhausted(RestClientException e) {
+        for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConnectionRequestTimeoutException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static boolean isUniqueConstraintViolation(DataIntegrityViolationException e) {
