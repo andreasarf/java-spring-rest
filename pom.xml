@@ -17,6 +17,7 @@
 	<properties>
 		<java.version>25</java.version>
 		<swagger-annotations.version>2.2.55</swagger-annotations.version>
+		<wiremock.version>3.13.2</wiremock.version>
 		<jacoco.version>0.8.16</jacoco.version>
 		<!-- Overridden by agents such as JaCoCo; keeps @{argLine} resolvable when none is set -->
 		<argLine></argLine>
@@ -34,6 +35,15 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-restclient</artifactId>
+		</dependency>
+		<dependency>
+			<!-- Pooled HTTP client for RestClient (Boot picks it up when present) -->
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -65,6 +75,13 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<!-- Standalone jar shades WireMock's own Jetty and Jackson, so they can't clash with Boot's -->
+			<groupId>org.wiremock</groupId>
+			<artifactId>wiremock-standalone</artifactId>
+			<version>${wiremock.version}</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>

@@ -1,10 +1,15 @@
 package com.company.resourceapi.controllers;
 
+import static org.springframework.http.HttpHeaders.RETRY_AFTER;
+import static org.springframework.http.HttpStatus.BAD_GATEWAY;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.CREATED;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
+import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
 
+import com.company.resourceapi.clients.ExternalProject;
+import com.company.resourceapi.clients.SdlcProjectClient;
 import com.company.resourceapi.entities.Project;
 import com.company.resourceapi.entities.SdlcSystem;
 import com.company.resourceapi.exceptions.ConflictException;
@@ -21,6 +26,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.hibernate.exception.ConstraintViolationException.ConstraintKind;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +38,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -50,6 +58,7 @@ public class ProjectRestController {
 
     private final ProjectService projectService;
     private final SdlcSystemService sdlcSystemService;
+    private final SdlcProjectClient sdlcProjectClient;
 
     @Operation(summary = "Get a Project")
     @GetMapping(ENDPOINT_ID)
@@ -57,6 +66,17 @@ public class ProjectRestController {
             @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
             @PathVariable(PATH_VARIABLE_ID) final long projectId) throws NotFoundException {
         return ResponseEntity.ok(projectService.getProject(projectId));
+    }
+
+    @Operation(summary = "Get a Project as described by its SDLC system")
+    @GetMapping(ENDPOINT_ID + "/external")
+    public ResponseEntity<ExternalProject> getExternalProject(
+            @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
+            @PathVariable(PATH_VARIABLE_ID) final long projectId) throws NotFoundException {
+        var project = projectService.getProject(projectId);
+        return sdlcProjectClient.fetchProject(project.getSdlcSystem(), project.getExternalId())
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(NOT_FOUND).build());
     }
 
     @Operation(summary = "Create a Project")
@@ -114,6 +134,22 @@ public class ProjectRestController {
         return ResponseEntity.status(NOT_FOUND).build();
     }
 
+    /** The SDLC system answered with an error, or couldn't be reached in time. */
+    @ExceptionHandler(RestClientException.class)
+    ResponseEntity<Void> handleSdlcSystemFailure(RestClientException e) {
+        if (isConnectionPoolExhausted(e)) {
+            // our own connection limit, not the SDLC system's fault
+            log.warn("No pooled connection to the SDLC system became free in time");
+            return ResponseEntity.status(SERVICE_UNAVAILABLE).header(RETRY_AFTER, "1").build();
+        }
+        // the status only: an error response's message would include the upstream body
+        var reason = e instanceof RestClientResponseException response
+                ? "HTTP " + response.getStatusCode().value()
+                : e.getMessage();
+        log.warn("SDLC system request failed: {}", reason);
+        return ResponseEntity.status(BAD_GATEWAY).build();
+    }
+
     @ExceptionHandler(ConflictException.class)
     ResponseEntity<Void> handleConflict(ConflictException e) {
         log.debug(e.getMessage());
@@ -132,6 +168,15 @@ public class ProjectRestController {
         }
         log.debug("Rejected duplicate project: {}", e.getMostSpecificCause().getMessage());
         return ResponseEntity.status(CONFLICT).build();
+    }
+
+    private static boolean isConnectionPoolExhausted(RestClientException e) {
+        for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConnectionRequestTimeoutException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static boolean isUniqueConstraintViolation(DataIntegrityViolationException e) {
