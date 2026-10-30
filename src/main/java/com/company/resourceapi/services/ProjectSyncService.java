@@ -4,10 +4,12 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
 
 import com.company.resourceapi.clients.SdlcProjectClient;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientResponseException;
 
 /** Example of background work: refreshes a project's name from its SDLC system. */
 @Service
@@ -28,18 +30,40 @@ public class ProjectSyncService {
     public CompletableFuture<Void> syncName(long projectId) {
         try {
             var project = projectService.getProject(projectId);
-            var externalName = sdlcProjectClient
-                    .fetchProject(project.getSdlcSystem(), project.getExternalId())
-                    .map(externalProject -> externalProject.name());
-            if (externalName.isEmpty() || externalName.get().equals(project.getName())) {
-                log.info("Project {} is unchanged in its SDLC system", projectId);
+            var externalId = project.getExternalId();
+            var sdlcSystemId = project.getSdlcSystem().getId();
+
+            var externalProject = sdlcProjectClient.fetchProject(project.getSdlcSystem(), externalId);
+            if (externalProject.isEmpty()) {
+                log.warn("Project {} ({}) is unknown to its SDLC system", projectId, externalId);
                 return completedFuture(null);
             }
-            projectService.updateProject(projectId, stored -> stored.setName(externalName.get()));
-            log.info("Synced project {} name from its SDLC system", projectId);
+            var externalName = externalProject.get().name();
+            if (externalName == null || externalName.equals(project.getName())) {
+                log.info("Project {} name is unchanged in its SDLC system", projectId);
+                return completedFuture(null);
+            }
+
+            var applied = new AtomicBoolean();
+            projectService.updateProject(projectId, stored -> {
+                // the project may have been re-keyed while its SDLC system was being asked
+                if (stored.getExternalId().equals(externalId) && stored.getSdlcSystem().getId() == sdlcSystemId) {
+                    stored.setName(externalName);
+                    applied.set(true);
+                }
+            });
+            if (applied.get()) {
+                log.info("Synced project {} name from its SDLC system", projectId);
+            } else {
+                log.info("Project {} changed while syncing; SDLC system name not applied", projectId);
+            }
             return completedFuture(null);
         } catch (Exception e) {
-            log.warn("Syncing project {} from its SDLC system failed: {}", projectId, e.getMessage());
+            // the status only: an error response's message would include the upstream body
+            var reason = e instanceof RestClientResponseException response
+                    ? "HTTP " + response.getStatusCode().value()
+                    : e.getClass().getSimpleName() + ": " + e.getMessage();
+            log.warn("Syncing project {} from its SDLC system failed: {}", projectId, reason);
             return CompletableFuture.failedFuture(e);
         }
     }

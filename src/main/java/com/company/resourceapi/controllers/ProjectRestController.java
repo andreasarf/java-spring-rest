@@ -128,12 +128,6 @@ public class ProjectRestController {
         return ResponseEntity.status(BAD_REQUEST).build();
     }
 
-    @ExceptionHandler(NotFoundException.class)
-    ResponseEntity<Void> handleNotFound(NotFoundException e) {
-        log.debug(e.getMessage());
-        return ResponseEntity.status(NOT_FOUND).build();
-    }
-
     /** The SDLC system answered with an error, or couldn't be reached in time. */
     @ExceptionHandler(RestClientException.class)
     ResponseEntity<Void> handleSdlcSystemFailure(RestClientException e) {
