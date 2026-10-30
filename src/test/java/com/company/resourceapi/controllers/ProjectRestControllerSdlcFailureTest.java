@@ -12,6 +12,7 @@ import com.company.resourceapi.entities.Project;
 import com.company.resourceapi.entities.SdlcSystem;
 import com.company.resourceapi.services.ProjectService;
 import com.company.resourceapi.services.SdlcSystemService;
+import java.util.Optional;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,15 @@ class ProjectRestControllerSdlcFailureTest {
         mockMvc.perform(get(ProjectRestController.ENDPOINT + "/1/external"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(header().string("Retry-After", "1"));
+    }
+
+    @Test
+    void givenNoTracerWhenHandledThenNoTraceIdHeader() throws Exception {
+        // this web slice loads no tracing: the filter must not send an empty trace id
+        when(sdlcProjectClient.fetchProject(any(), anyString())).thenReturn(Optional.empty());
+
+        mockMvc.perform(get(ProjectRestController.ENDPOINT + "/1/external"))
+                .andExpect(header().doesNotExist("X-Trace-Id"));
     }
 
     @Test

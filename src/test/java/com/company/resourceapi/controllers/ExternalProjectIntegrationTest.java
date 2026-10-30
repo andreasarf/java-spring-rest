@@ -138,6 +138,7 @@ class ExternalProjectIntegrationTest {
         var traceId = mockMvc.perform(get(endpoint))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getHeader(TraceIdResponseHeaderFilter.TRACE_ID_HEADER);
+        assertThat(traceId).matches("[0-9a-f]{32}");
 
         // the SDLC system sees the same trace, as a W3C traceparent header
         sdlcSystemServer.verify(getRequestedFor(urlEqualTo(SDLC_PROJECT_URL))
