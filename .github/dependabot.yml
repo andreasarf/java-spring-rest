@@ -3,11 +3,15 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      # Every two months: 09:00 UTC on the 1st of Jan, Mar, May, Jul, Sep and Nov
+      interval: "cron"
+      cronjob: "0 9 1 */2 *"
   - package-ecosystem: "maven"
     directory: "/"
     schedule:
-      interval: "weekly"
+      # Every two months: 09:00 UTC on the 1st of Jan, Mar, May, Jul, Sep and Nov
+      interval: "cron"
+      cronjob: "0 9 1 */2 *"
     groups:
       maven-minor-and-patch:
         update-types: [ "minor", "patch" ]
