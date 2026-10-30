@@ -52,6 +52,11 @@ Every request gets a trace id ([Micrometer Tracing](https://micrometer.io/docs/t
 - log lines carry `[traceId-spanId]`, so a reported `X-Trace-Id` leads straight to its log lines
 - outgoing `RestClient` calls (e.g. to SDLC systems) send `traceparent`, so the trace continues there
 
+- background work keeps the trace: `@Async` tasks run on virtual threads (`spring.threads.virtual.enabled`) and
+  `ContextPropagatingTaskDecorator` copies the caller's trace context to them. Example:
+  `POST /api/v2/projects/{id}/sync` answers `202 Accepted` and refreshes the project's name from its SDLC system
+  in the background; its log lines and its call to the SDLC system carry the request's trace id
+
 No spans are exported; add a reporter (e.g. Zipkin or OTLP) to send them to a tracing backend, and lower
 `management.tracing.sampling.probability` (set to `1.0` here) to what that backend can take.
 
