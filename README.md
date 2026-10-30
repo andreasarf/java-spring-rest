@@ -39,5 +39,15 @@ injects uses Boot's single request factory, so there is one pool for the applica
 The client is tested against [WireMock](https://wiremock.org/) (`SdlcProjectClientTest`, `ExternalProjectIntegrationTest`,
 and `SdlcProjectClientPoolingTest`, which counts the connections actually opened).
 
+## Tracing
+Every request gets a trace id ([Micrometer Tracing](https://micrometer.io/docs/tracing) with Brave, W3C trace context):
+
+- an incoming `traceparent` header is continued, otherwise a new trace starts
+- the trace id is returned in the `X-Trace-Id` response header, also on errors
+- log lines carry `[traceId-spanId]`, so a reported `X-Trace-Id` leads straight to its log lines
+- outgoing `RestClient` calls (e.g. to SDLC systems) send `traceparent`, so the trace continues there
+
+No spans are exported; add a reporter (e.g. Zipkin or OTLP) to send them to a tracing backend.
+
 ## Testing
 There are scripts to test the Rest API in Postman.

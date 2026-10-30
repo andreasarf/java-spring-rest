@@ -41,6 +41,15 @@
 			<artifactId>spring-boot-starter-restclient</artifactId>
 		</dependency>
 		<dependency>
+			<!-- Trace ids for incoming requests, log lines and outgoing RestClient calls (W3C traceparent) -->
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-micrometer-tracing-brave</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-tracing-bridge-brave</artifactId>
+		</dependency>
+		<dependency>
 			<!-- Pooled HTTP client for RestClient (Boot picks it up when present) -->
 			<groupId>org.apache.httpcomponents.client5</groupId>
 			<artifactId>httpclient5</artifactId>
