@@ -35,13 +35,15 @@ public class RedissonConfig {
     RedissonClient redissonClient(DataRedisConnectionDetails connection, DataRedisProperties redis,
             @Value("${resourceapi.redisson.key-prefix}") String keyPrefix) {
         var standalone = connection.getStandalone();
-        var config = new Config().setLazyInitialization(true);
+        var config = new Config()
+                .setLazyInitialization(true)
+                .setUsername(connection.getUsername())
+                .setPassword(connection.getPassword())
+                .setNameMapper(new KeyPrefixNameMapper(keyPrefix));
         config.useSingleServer()
                 .setAddress((connection.getSslBundle() != null ? "rediss://" : "redis://")
                         + standalone.getHost() + ":" + standalone.getPort())
                 .setDatabase(standalone.getDatabase())
-                .setUsername(connection.getUsername())
-                .setPassword(connection.getPassword())
                 .setConnectTimeout(millis(redis.getConnectTimeout(), Duration.ofSeconds(10)))
                 .setTimeout(millis(redis.getTimeout(), Duration.ofSeconds(3)))
                 // fail fast like the cache: callers decide what to do without Redis
@@ -50,8 +52,7 @@ public class RedissonConfig {
                 .setConnectionMinimumIdleSize(1)
                 .setConnectionPoolSize(8)
                 .setSubscriptionConnectionMinimumIdleSize(1)
-                .setSubscriptionConnectionPoolSize(4)
-                .setNameMapper(new KeyPrefixNameMapper(keyPrefix));
+                .setSubscriptionConnectionPoolSize(4);
         return Redisson.create(config);
     }
 
