@@ -69,4 +69,26 @@ class CacheUnavailableTest {
         // each skipped cache read/write is bounded by the Redis timeouts, not Lettuce's 60s default
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(10));
     }
+
+    @Test
+    void givenRedisDownWhenSyncThenItRunsWithoutTheLock() throws Exception {
+        var sdlcSystem = new SdlcSystem();
+        sdlcSystem.setBaseUrl(sdlcSystemServer.baseUrl());
+        sdlcSystem = sdlcSystemRepository.save(sdlcSystem);
+        var project = new Project();
+        project.setExternalId("NOLOCK");
+        project.setSdlcSystem(sdlcSystem);
+        long projectId = projectRepository.save(project).getId();
+        sdlcSystemServer.stubFor(WireMock.get(urlEqualTo("/rest/api/2/project/NOLOCK"))
+                .willReturn(okJson("{\"key\": \"NOLOCK\", \"name\": \"Synced without Redis\"}")));
+
+        mockMvc.perform(post(ProjectRestController.ENDPOINT + "/" + projectId + "/sync"))
+                .andExpect(status().isAccepted());
+
+        var deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (!"Synced without Redis".equals(projectRepository.findById(projectId).orElseThrow().getName())) {
+            assertThat(System.nanoTime()).as("sync not done within 10s").isLessThan(deadline);
+            Thread.sleep(50);
+        }
+    }
 }

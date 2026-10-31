@@ -5,7 +5,6 @@ import static com.company.resourceapi.controllers.ProjectRestController.ENDPOINT
 import static com.company.resourceapi.controllers.ProjectRestController.PATH_VARIABLE_ID;
 
 import com.company.resourceapi.exceptions.NotFoundException;
-import com.company.resourceapi.services.ProjectService;
 import com.company.resourceapi.services.ProjectSyncService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -23,7 +22,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ProjectSyncController {
 
-    private final ProjectService projectService;
     private final ProjectSyncService projectSyncService;
 
     @Operation(summary = "Refresh a Project's name from its SDLC system, in the background")
@@ -31,10 +29,8 @@ public class ProjectSyncController {
     public ResponseEntity<Void> syncProject(
             @Parameter(name = PATH_VARIABLE_ID, description = "ID", required = true)
             @PathVariable(PATH_VARIABLE_ID) final long projectId) throws NotFoundException {
-        // an unknown project is reported now, not only in the background (404 via ApiExceptionHandler);
-        // a full task executor rejects the sync (503 via ApiExceptionHandler)
-        projectService.getProject(projectId);
-        projectSyncService.syncName(projectId);
+        // unknown project: 404, sync already running: 409, no background slot: 503 (ApiExceptionHandler)
+        projectSyncService.requestSync(projectId);
         return ResponseEntity.accepted().build();
     }
 }

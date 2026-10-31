@@ -4,6 +4,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -14,6 +15,7 @@ import com.company.resourceapi.entities.SdlcSystem;
 import com.company.resourceapi.repositories.ProjectRepository;
 import com.company.resourceapi.repositories.SdlcSystemRepository;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,17 +48,31 @@ class ProjectSyncBackpressureTest {
         var sdlcSystem = new SdlcSystem();
         sdlcSystem.setBaseUrl(sdlcSystemServer.baseUrl());
         sdlcSystem = sdlcSystemRepository.save(sdlcSystem);
-        var project = new Project();
-        project.setExternalId("BUSY");
-        project.setSdlcSystem(sdlcSystem);
-        var syncUrl = ProjectRestController.ENDPOINT + "/" + projectRepository.save(project).getId() + "/sync";
+        var syncUrl = syncUrl(sdlcSystem, "BUSY");
+        var otherSyncUrl = syncUrl(sdlcSystem, "OTHER");
         sdlcSystemServer.stubFor(get(urlPathMatching("/rest/api/2/project/.*"))
                 .willReturn(okJson("{\"key\": \"BUSY\", \"name\": \"Busy\"}").withFixedDelay(1_000)));
 
-        // when / then
+        // when / then: another project's sync (the same project's would be refused by its lock)
         mockMvc.perform(post(syncUrl)).andExpect(status().isAccepted());
-        mockMvc.perform(post(syncUrl))
+        mockMvc.perform(post(otherSyncUrl))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(header().string("Retry-After", "1"));
+
+        // the rejected sync released its lock: it can be started once the first sync freed the slot
+        var deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        int status;
+        while ((status = mockMvc.perform(post(otherSyncUrl)).andReturn().getResponse().getStatus()) == 503) {
+            assertThat(System.nanoTime()).as("no free slot within 10s").isLessThan(deadline);
+            Thread.sleep(100);
+        }
+        assertThat(status).isEqualTo(202);
+    }
+
+    private String syncUrl(SdlcSystem sdlcSystem, String externalId) {
+        var project = new Project();
+        project.setExternalId(externalId);
+        project.setSdlcSystem(sdlcSystem);
+        return ProjectRestController.ENDPOINT + "/" + projectRepository.save(project).getId() + "/sync";
     }
 }
