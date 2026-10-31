@@ -1,0 +1,9 @@
+# Build output and local tooling; the image builds from sources
+target/
+.git/
+.github/
+.idea/
+*.iml
+.vscode/
+postman-tests/
+docs/

@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1
+#
+# JVM image with ahead-of-time optimizations for faster startup:
+#  - Spring AOT: the bean wiring is generated at build time (spring.aot.enabled)
+#  - Java 25 AOT cache (JEP 483/514/515): a training run while building the image records the
+#    loaded and linked classes and method profiles; containers start from that cache
+#
+#   docker build -f Dockerfile.aot -t resourceapi:aot .
+#   docker run --rm -p 8080:8080 resourceapi:aot
+#
+# Like a native image, Spring AOT fixes at build time which beans exist; see docs/native-image.md.
+
+FROM eclipse-temurin:25-jdk AS build
+WORKDIR /workspace
+
+COPY .mvn/ .mvn/
+COPY mvnw pom.xml ./
+RUN --mount=type=cache,target=/root/.m2 ./mvnw -B -q dependency:go-offline
+
+COPY src/ src/
+# Run Spring's AOT processing after compiling; "package" then builds a regular jar that includes its output
+RUN --mount=type=cache,target=/root/.m2 ./mvnw -B -q -DskipTests compile spring-boot:process-aot package \
+    && cp target/resourceapi-*.jar application.jar \
+    && java -Djarmode=tools -jar application.jar extract --layers --destination extracted
+
+# The AOT cache only works with the same JVM and class path it was created with,
+# so it is created on the runtime image, from the files the container runs
+FROM eclipse-temurin:25-jre
+WORKDIR /app
+RUN useradd --system --uid 1001 --no-create-home spring
+
+COPY --from=build /workspace/extracted/dependencies/ ./
+COPY --from=build /workspace/extracted/spring-boot-loader/ ./
+COPY --from=build /workspace/extracted/snapshot-dependencies/ ./
+COPY --from=build /workspace/extracted/application/ ./
+
+# Training run: start the application until its context is ready, then exit and write the cache
+RUN java -XX:AOTCacheOutput=application.aot -Dspring.aot.enabled=true \
+        -Dspring.context.exit=onRefresh -jar application.jar
+
+USER spring
+EXPOSE 8080
+ENTRYPOINT ["java", "-XX:AOTCache=application.aot", "-Dspring.aot.enabled=true", "-jar", "application.jar"]
