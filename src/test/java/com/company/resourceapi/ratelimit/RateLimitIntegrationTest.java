@@ -75,7 +75,7 @@ class RateLimitIntegrationTest {
         mockMvc.perform(get(externalUrl(project("B")))).andExpect(status().isOk());
         mockMvc.perform(get(externalUrl(project("C"))))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(header().string("Retry-After", "1"));
+                .andExpect(header().string("Retry-After", "2"));
 
         sdlcSystemServer.verify(2, getRequestedFor(urlPathMatching("/rest/api/2/project/.*")));
     }
@@ -128,7 +128,7 @@ class RateLimitIntegrationTest {
         }
         mockMvc.perform(post(syncUrl))
                 .andExpect(status().isTooManyRequests())
-                .andExpect(header().string("Retry-After", "30"));
+                .andExpect(header().string("Retry-After", "60"));
     }
 
     private long project(String externalId) {
@@ -176,5 +176,20 @@ class RateLimitIntegrationTest {
         mockMvc.perform(post(syncUrl)).andExpect(status().isAccepted());
         // let that sync finish here, not during the next test
         await(() -> !otherInstanceLock.isLocked(), Duration.ofSeconds(5));
+    }
+
+    @Test
+    void givenLimiterRemovedFromRedisThenItIsSetUpAgain() throws Exception {
+        mockMvc.perform(get(externalUrl(project("A")))).andExpect(status().isOk());
+        var limiter = redisson.getRateLimiter("sdlc-rate:" + sdlcSystem.getId());
+        // expired from disuse (or flushed)
+        assertThat(limiter.delete()).isTrue();
+
+        mockMvc.perform(get(externalUrl(project("B")))).andExpect(status().isOk());
+
+        assertThat(limiter.getConfig().getRate()).isEqualTo(2);
+        // a fresh window: B used one permit, C uses the second, D is refused
+        mockMvc.perform(get(externalUrl(project("C")))).andExpect(status().isOk());
+        mockMvc.perform(get(externalUrl(project("D")))).andExpect(status().isServiceUnavailable());
     }
 }
