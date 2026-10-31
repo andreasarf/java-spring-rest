@@ -29,7 +29,7 @@ public class RateLimiters {
     private static final int KEEP_ALIVE_PERIODS = 10;
     private static final Duration MIN_KEEP_ALIVE = Duration.ofMinutes(1);
     /** How long requests are allowed without asking Redis after it failed. */
-    static final Duration PAUSE_AFTER_FAILURE = Duration.ofSeconds(10);
+    private static final Duration PAUSE_AFTER_FAILURE = Duration.ofSeconds(10);
     /** Limiters this instance has set up, most recently used kept (bounded: one per project). */
     private static final int MAX_REMEMBERED = 10_000;
 
@@ -87,7 +87,7 @@ public class RateLimiters {
         return false;
     }
 
-    static Duration keepAlive(RateLimitProperties.Limit limit) {
+    private static Duration keepAlive(RateLimitProperties.Limit limit) {
         var periods = limit.period().multipliedBy(KEEP_ALIVE_PERIODS);
         return periods.compareTo(MIN_KEEP_ALIVE) > 0 ? periods : MIN_KEEP_ALIVE;
     }
