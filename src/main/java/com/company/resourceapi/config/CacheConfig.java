@@ -35,7 +35,8 @@ public class CacheConfig {
 
     /**
      * Starts from Boot's defaults (spring.cache.redis.*: key prefix, null values, ...) and only
-     * replaces the value serializer and sets each cache's time to live.
+     * replaces the value serializer and sets each cache's time to live. External projects rely on
+     * null values being cached (spring.cache.redis.cache-null-values, true by default).
      */
     @Bean
     RedisCacheManagerBuilderCustomizer redisCacheCustomizer(CacheTtlProperties ttl) {
