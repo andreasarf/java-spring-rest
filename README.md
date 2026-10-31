@@ -11,6 +11,14 @@ Java 25+ (Spring Boot 4)
 ## Build
 `./mvnw clean install`
 
+## Docker
+Three Dockerfiles: `Dockerfile` (standard JVM image), `Dockerfile.aot` (JVM with Spring AOT and a Java 25 AOT
+cache, starts ~4x faster) and `Dockerfile.native` (GraalVM native executable). See [Docker images](docs/docker.md).
+
+```
+docker build -t resourceapi . && docker run --rm -p 8080:8080 resourceapi
+```
+
 ## Native image (GraalVM)
 The JVM build (`./mvnw clean install`) is the main build and the only one CI runs. A native executable is an
 optional alternative and is built manually. The application can be compiled ahead of time into a native executable with
