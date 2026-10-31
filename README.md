@@ -79,10 +79,10 @@ The application uses Redis (`spring.data.redis.host`/`port`, default `localhost:
 | Cache | What | TTL |
 |---|---|---|
 | `sdlc-systems` | SDLC systems by id, read on every create, update and SDLC call | `resourceapi.cache.sdlc-systems-ttl` (10m) |
-| `external-projects` | `GET /api/v2/projects/{id}/external` answers per SDLC system and external id; "unknown" answers are not cached | `resourceapi.cache.external-projects-ttl` (5m) |
+| `external-projects` | `GET /api/v2/projects/{id}/external` answers per SDLC system and external id | `resourceapi.cache.external-projects-ttl` (5m) |
+| `external-projects-missing` | "the SDLC system doesn't know this project" answers, kept briefly so a project created there is found soon | `resourceapi.cache.missing-external-projects-ttl` (30s) |
 
-A background sync always asks the SDLC system and refreshes the cached answer (or removes it when the SDLC
-system no longer knows the project). SDLC systems are not changed
+A background sync always asks the SDLC system and refreshes both caches with its answer. SDLC systems are not changed
 through this API; one changed directly in the database is picked up when its entry expires. The cache is an
 optimization: if Redis is unreachable, cache reads and writes are logged and skipped (each waits at most the
 500 ms Redis timeouts) and requests are served without it.
@@ -104,6 +104,7 @@ available again one period later, which is also what `Retry-After` says):
 |---|---|---|
 | Calls to one SDLC system (`resourceapi.rate-limit.sdlc.*`), protecting its API quota; cache hits don't count | 10 per 1s, waiting up to 1s for a permit | `503` + `Retry-After` (our own limit, not the SDLC system's failure); a background sync logs it |
 | `POST /api/v2/projects/{id}/sync` per project (`resourceapi.rate-limit.sync.*`); requests refused anyway (unknown project, sync already running) don't count, one refused because no background slot is free (`503`) does | 6 per minute | `429` + `Retry-After` |
+| All `/api/**` requests per client IP (`resourceapi.rate-limit.client.*`); behind a reverse proxy the IP comes from `X-Forwarded-For`, trusted only from internal proxy addresses (`server.forward-headers-strategy=native`) | 100 per second | `429` + `Retry-After` |
 
 A changed rate is applied to the existing limiter when an instance first uses it; unused limiters expire from
 Redis after an hour. Invalid limits (e.g. `permits=0`) stop the application at startup. If Redis can't be reached, requests are allowed (limiting protects, losing it shouldn't
