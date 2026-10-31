@@ -22,6 +22,9 @@ export JAVA_HOME=/path/to/graalvm-jdk-25
 ./target/resourceapi
 ```
 
+See the [native image guide](docs/native-image.md) for prerequisites, running and configuring the executable
+(some settings are fixed at build time), build memory and troubleshooting.
+
 Spring Boot's `native` profile runs AOT processing and the `native-maven-plugin` builds `target/resourceapi`.
 On a 4-core / 16 GB machine the build takes about 7 minutes and needs about 11 GB of memory; the executable
 (about 190 MB) starts in about 0.25 s.
