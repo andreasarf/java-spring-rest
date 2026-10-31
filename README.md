@@ -11,6 +11,21 @@ Java 25+ (Spring Boot 4)
 ## Build
 `./mvnw clean install`
 
+## Native image (GraalVM)
+The JVM build (`./mvnw clean install`) is the main build and the only one CI runs. A native executable is an
+optional alternative and is built manually. The application can be compiled ahead of time into a native executable with
+[GraalVM](https://www.graalvm.org/) (GraalVM CE for JDK 25, with `native-image`, plus gcc and zlib headers):
+
+```
+export JAVA_HOME=/path/to/graalvm-jdk-25
+./mvnw -Pnative -DskipTests native:compile
+./target/resourceapi
+```
+
+Spring Boot's `native` profile runs AOT processing and the `native-maven-plugin` builds `target/resourceapi`.
+On a 4-core / 16 GB machine the build takes about 7 minutes and needs about 11 GB of memory; the executable
+(about 190 MB) starts in about 0.25 s.
+
 ## Database
 Database uses in-memory DB H2. It will automatically build and export the required tables and data.
 
