@@ -46,17 +46,26 @@ class ProjectSyncBackpressureTest {
         var sdlcSystem = new SdlcSystem();
         sdlcSystem.setBaseUrl(sdlcSystemServer.baseUrl());
         sdlcSystem = sdlcSystemRepository.save(sdlcSystem);
-        var project = new Project();
-        project.setExternalId("BUSY");
-        project.setSdlcSystem(sdlcSystem);
-        var syncUrl = ProjectRestController.ENDPOINT + "/" + projectRepository.save(project).getId() + "/sync";
+        var syncUrl = syncUrl(sdlcSystem, "BUSY");
+        var otherSyncUrl = syncUrl(sdlcSystem, "OTHER");
         sdlcSystemServer.stubFor(get(urlPathMatching("/rest/api/2/project/.*"))
                 .willReturn(okJson("{\"key\": \"BUSY\", \"name\": \"Busy\"}").withFixedDelay(1_000)));
 
-        // when / then
+        // when / then: another project's sync (the same project's would be refused by its lock)
         mockMvc.perform(post(syncUrl)).andExpect(status().isAccepted());
-        mockMvc.perform(post(syncUrl))
+        mockMvc.perform(post(otherSyncUrl))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(header().string("Retry-After", "1"));
+
+        // the rejected sync released its lock: it can be started once a slot is free
+        Thread.sleep(1_500);
+        mockMvc.perform(post(otherSyncUrl)).andExpect(status().isAccepted());
+    }
+
+    private String syncUrl(SdlcSystem sdlcSystem, String externalId) {
+        var project = new Project();
+        project.setExternalId(externalId);
+        project.setSdlcSystem(sdlcSystem);
+        return ProjectRestController.ENDPOINT + "/" + projectRepository.save(project).getId() + "/sync";
     }
 }

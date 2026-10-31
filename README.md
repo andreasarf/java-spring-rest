@@ -87,6 +87,14 @@ through this API; one changed directly in the database is picked up when its ent
 optimization: if Redis is unreachable, cache reads and writes are logged and skipped (each waits at most the
 500 ms Redis timeouts) and requests are served without it.
 
+**Lock** ([Redisson](https://redisson.org/) `RLock`): at most one `POST /api/v2/projects/{id}/sync` per project
+runs at a time, across all instances; a second one gets `409 Conflict` until the first ends. The lock is
+released when the background sync ends and expires after `resourceapi.sync.lock-lease-time` (60s) in case
+an instance dies mid-sync. If Redis can't be reached, the sync runs without the lock (a duplicate sync only
+costs an extra SDLC call). Redisson connects lazily and uses the same Redis connection settings; its keys
+are prefixed with `resourceapi.redisson.key-prefix`. (Redisson's Spring Boot starter isn't used: it targets
+Spring Boot 3. Redisson brings a JCache provider, so `spring.cache.type=redis` is set explicitly.)
+
 **Local development**: `./mvnw spring-boot:run` starts Redis from `compose.yaml` automatically
 (`spring-boot-docker-compose`); with `java -jar`, start it yourself with `docker compose up -d` (it listens on
 `localhost:6379`). Tests start their own Redis with Testcontainers, so they need Docker.

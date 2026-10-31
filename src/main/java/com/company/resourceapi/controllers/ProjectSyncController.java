@@ -5,7 +5,9 @@ import static com.company.resourceapi.controllers.ProjectRestController.ENDPOINT
 import static com.company.resourceapi.controllers.ProjectRestController.PATH_VARIABLE_ID;
 
 import com.company.resourceapi.exceptions.NotFoundException;
+import com.company.resourceapi.exceptions.SyncInProgressException;
 import com.company.resourceapi.services.ProjectService;
+import com.company.resourceapi.services.ProjectSyncLock;
 import com.company.resourceapi.services.ProjectSyncService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -25,16 +27,27 @@ public class ProjectSyncController {
 
     private final ProjectService projectService;
     private final ProjectSyncService projectSyncService;
+    private final ProjectSyncLock projectSyncLock;
 
     @Operation(summary = "Refresh a Project's name from its SDLC system, in the background")
     @PostMapping(ENDPOINT_ID + "/sync")
     public ResponseEntity<Void> syncProject(
             @Parameter(name = PATH_VARIABLE_ID, description = "ID", required = true)
             @PathVariable(PATH_VARIABLE_ID) final long projectId) throws NotFoundException {
-        // an unknown project is reported now, not only in the background (404 via ApiExceptionHandler);
-        // a full task executor rejects the sync (503 via ApiExceptionHandler)
+        // an unknown project is reported now, not only in the background (404 via ApiExceptionHandler)
         projectService.getProject(projectId);
-        projectSyncService.syncName(projectId);
+
+        // one sync per project at a time, across instances (409 via ApiExceptionHandler); the background
+        // task releases the lock when it ends
+        var lease = projectSyncLock.tryAcquire(projectId)
+                .orElseThrow(() -> new SyncInProgressException(projectId));
+        try {
+            projectSyncService.syncName(projectId).whenComplete((result, failure) -> lease.release());
+        } catch (RuntimeException e) {
+            // not started, e.g. a full task executor (503 via ApiExceptionHandler)
+            lease.release();
+            throw e;
+        }
         return ResponseEntity.accepted().build();
     }
 }
