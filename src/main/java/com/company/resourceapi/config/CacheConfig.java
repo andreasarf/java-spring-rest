@@ -1,5 +1,8 @@
 package com.company.resourceapi.config;
 
+import com.company.resourceapi.clients.ExternalProject;
+import com.company.resourceapi.entities.SdlcSystem;
+import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.boot.cache.autoconfigure.RedisCacheManagerBuilderCustomizer;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -22,6 +25,8 @@ import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 @Configuration
 @EnableCaching
 @EnableConfigurationProperties(CacheTtlProperties.class)
+// cached values are rebuilt from JSON by type name: reflection a native image must know about
+@RegisterReflectionForBinding({SdlcSystem.class, ExternalProject.class})
 public class CacheConfig {
 
     public static final String SDLC_SYSTEMS = "sdlc-systems";
