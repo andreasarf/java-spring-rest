@@ -1,5 +1,6 @@
 package com.company.resourceapi.config;
 
+import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.boot.cache.autoconfigure.RedisCacheManagerBuilderCustomizer;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cache.annotation.CachingConfigurer;
@@ -8,6 +9,7 @@ import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.cache.interceptor.LoggingCacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Role;
 import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext.SerializationPair;
 import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
@@ -20,7 +22,7 @@ import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 @Configuration
 @EnableCaching
 @EnableConfigurationProperties(CacheTtlProperties.class)
-public class CacheConfig implements CachingConfigurer {
+public class CacheConfig {
 
     public static final String SDLC_SYSTEMS = "sdlc-systems";
     public static final String EXTERNAL_PROJECTS = "external-projects";
@@ -47,8 +49,17 @@ public class CacheConfig implements CachingConfigurer {
         };
     }
 
-    @Override
-    public CacheErrorHandler errorHandler() {
-        return new LoggingCacheErrorHandler();
+    /**
+     * Caching infrastructure reads this before regular beans exist; as an infrastructure bean of its
+     * own, without dependencies, that early creation is expected and not reported as a problem.
+     */
+    @Configuration
+    @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+    static class CacheErrorHandling implements CachingConfigurer {
+
+        @Override
+        public CacheErrorHandler errorHandler() {
+            return new LoggingCacheErrorHandler();
+        }
     }
 }
