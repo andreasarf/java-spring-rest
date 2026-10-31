@@ -10,10 +10,8 @@ import com.company.resourceapi.exceptions.RateLimitExceededException;
 import com.company.resourceapi.exceptions.RateLimitExceededException.Scope;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 
 /**
@@ -28,22 +26,17 @@ public class ExternalProjectService {
     private final RateLimiters rateLimiters;
     private final RateLimitProperties rateLimits;
 
-    /** Cached; a project unknown to the SDLC system isn't cached, so it is found once it exists. */
-    @Cacheable(cacheNames = EXTERNAL_PROJECTS, key = "#sdlcSystem.id + ':' + #externalId", unless = "#result == null")
+    /**
+     * Cached, including the answer "the SDLC system doesn't know this project" (cached as null), which
+     * is kept only briefly so a project created there is found soon (see CacheConfig).
+     */
+    @Cacheable(cacheNames = EXTERNAL_PROJECTS, key = "#sdlcSystem.id + ':' + #externalId")
     public Optional<ExternalProject> findProject(SdlcSystem sdlcSystem, String externalId) {
         return fetch(sdlcSystem, externalId);
     }
 
-    /**
-     * Always asks the SDLC system and updates the cache with the answer: a found project replaces the
-     * cached one, a project the SDLC system no longer knows removes it.
-     */
-    @Caching(
-            put = @CachePut(cacheNames = EXTERNAL_PROJECTS, key = "#sdlcSystem.id + ':' + #externalId",
-                    unless = "#result == null"),
-            // unlike for @CachePut, #result is the Optional itself here (late evictions get the raw return value)
-            evict = @CacheEvict(cacheNames = EXTERNAL_PROJECTS, key = "#sdlcSystem.id + ':' + #externalId",
-                    condition = "#result == null or #result.isEmpty()"))
+    /** Always asks the SDLC system and caches its answer, found or unknown, replacing the cached one. */
+    @CachePut(cacheNames = EXTERNAL_PROJECTS, key = "#sdlcSystem.id + ':' + #externalId")
     public Optional<ExternalProject> refreshProject(SdlcSystem sdlcSystem, String externalId) {
         return fetch(sdlcSystem, externalId);
     }

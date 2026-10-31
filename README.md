@@ -79,10 +79,9 @@ The application uses Redis (`spring.data.redis.host`/`port`, default `localhost:
 | Cache | What | TTL |
 |---|---|---|
 | `sdlc-systems` | SDLC systems by id, read on every create, update and SDLC call | `resourceapi.cache.sdlc-systems-ttl` (10m) |
-| `external-projects` | `GET /api/v2/projects/{id}/external` answers per SDLC system and external id; "unknown" answers are not cached | `resourceapi.cache.external-projects-ttl` (5m) |
+| `external-projects` | `GET /api/v2/projects/{id}/external` answers per SDLC system and external id | `resourceapi.cache.external-projects-ttl` (5m); "the SDLC system doesn't know this project" (stored as a cached null) only `resourceapi.cache.missing-external-projects-ttl` (30s), so a project created there is found soon |
 
-A background sync always asks the SDLC system and refreshes the cached answer (or removes it when the SDLC
-system no longer knows the project). SDLC systems are not changed
+A background sync always asks the SDLC system and replaces the cached answer with its own. SDLC systems are not changed
 through this API; one changed directly in the database is picked up when its entry expires. The cache is an
 optimization: if Redis is unreachable, cache reads and writes are logged and skipped (each waits at most the
 500 ms Redis timeouts) and requests are served without it.
@@ -104,10 +103,20 @@ available again one period later, which is also what `Retry-After` says):
 |---|---|---|
 | Calls to one SDLC system (`resourceapi.rate-limit.sdlc.*`), protecting its API quota; cache hits don't count | 10 per 1s, waiting up to 1s for a permit | `503` + `Retry-After` (our own limit, not the SDLC system's failure); a background sync logs it |
 | `POST /api/v2/projects/{id}/sync` per project (`resourceapi.rate-limit.sync.*`); requests refused anyway (unknown project, sync already running) don't count, one refused because no background slot is free (`503`) does | 6 per minute | `429` + `Retry-After` |
+| All `/api/**` requests per client IP (`resourceapi.rate-limit.client.*`); behind a reverse proxy the IP comes from `X-Forwarded-For`, trusted only from internal proxy addresses (`server.forward-headers-strategy=native`, see below) | 100 per second | `429` + `Retry-After` |
 
 A changed rate is applied to the existing limiter when an instance first uses it; unused limiters expire from
-Redis after an hour. Invalid limits (e.g. `permits=0`) stop the application at startup. If Redis can't be reached, requests are allowed (limiting protects, losing it shouldn't
-stop the application).
+Redis after 10 periods (at least a minute), so per-IP limiters don't pile up. Invalid limits (e.g.
+`permits=0`) stop the application at startup. If Redis can't be reached, requests are allowed (limiting
+protects, losing it shouldn't stop the application), and Redis is not asked again for 10 seconds, so an
+outage doesn't add a timeout to every request.
+
+The per-IP limit only means something if the application sees the client's address. Tomcat takes it from
+`X-Forwarded-For` when the request comes from an address matching `server.tomcat.remoteip.internal-proxies`
+(by default 10/8, 192.168/16, 172.16/12, 169.254/16, 127/8 and IPv6 local addresses). If the reverse proxy or
+load balancer has another address, set that property to match it; otherwise every request appears to come from
+the proxy and all clients share one limit. Never match addresses clients can connect from directly, or they
+can choose their own key by sending `X-Forwarded-For`.
 
 **Local development**: `./mvnw spring-boot:run` starts Redis from `compose.yaml` automatically
 (`spring-boot-docker-compose`); with `java -jar`, start it yourself with `docker compose up -d` (it listens on
