@@ -91,8 +91,10 @@ optimization: if Redis is unreachable, cache reads and writes are logged and ski
 runs at a time, across all instances; a second one gets `409 Conflict` until the first ends. The lock is
 released when the background sync ends and expires after `resourceapi.sync.lock-lease-time` (60s) in case
 an instance dies mid-sync. If Redis can't be reached, the sync runs without the lock (a duplicate sync only
-costs an extra SDLC call). Redisson connects lazily and uses the same Redis connection settings; its keys
-are prefixed with `resourceapi.redisson.key-prefix`. (Redisson's Spring Boot starter isn't used: it targets
+costs an extra SDLC call; the failed lock request takes about a second). Redisson connects lazily and uses the
+same Redis connection settings; its keys are prefixed with `resourceapi.redisson.key-prefix`. Only a
+standalone Redis is supported for the lock: with Sentinel or Cluster the application still starts and syncs
+run unlocked; TLS uses the JVM's trust store (Boot SSL bundles aren't passed to Redisson). (Redisson's Spring Boot starter isn't used: it targets
 Spring Boot 3. Redisson brings a JCache provider, so `spring.cache.type=redis` is set explicitly.)
 
 **Local development**: `./mvnw spring-boot:run` starts Redis from `compose.yaml` automatically
