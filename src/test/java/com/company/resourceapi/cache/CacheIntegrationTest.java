@@ -170,9 +170,25 @@ class CacheIntegrationTest {
     void givenCachedValuesThenRedisKeysCarryTheConfiguredPrefixAndTtl() throws Exception {
         sdlcSystemService.getSdlcSystem(sdlcSystem.getId());
 
-        var keys = redisTemplate.keys("*" + SDLC_SYSTEMS + "::" + sdlcSystem.getId());
+        var keys = redisTemplate.keys(keyPrefix + SDLC_SYSTEMS + "::" + sdlcSystem.getId());
         // this context's prefix (RedisTestContainerInitializer), so contexts don't share entries
         assertThat(keys).singleElement().asString().startsWith(keyPrefix + SDLC_SYSTEMS + "::");
         assertThat(redisTemplate.getExpire(keys.iterator().next())).isBetween(1L, 600L);
+    }
+
+    @Test
+    void givenProjectGoneFromSdlcSystemWhenSyncedThenCachedEntryIsRemoved() throws Exception {
+        sdlcSystemServer.stubFor(WireMock.get(urlEqualTo(SDLC_PROJECT_URL))
+                .willReturn(okJson("{\"key\": \"CACHED\", \"name\": \"Soon gone\"}")));
+        mockMvc.perform(get(externalUrl())).andExpect(status().isOk());
+
+        // deleted in the SDLC system; the sync finds out
+        sdlcSystemServer.stubFor(WireMock.get(urlEqualTo(SDLC_PROJECT_URL))
+                .willReturn(notFound().withHeader("Content-Type", "application/json").withBody("{}")));
+        mockMvc.perform(post(ProjectRestController.ENDPOINT + "/" + projectId + "/sync"))
+                .andExpect(status().isAccepted());
+        await(() -> cacheManager.getCache(EXTERNAL_PROJECTS).get(externalKey()) == null);
+
+        mockMvc.perform(get(externalUrl())).andExpect(status().isNotFound());
     }
 }
