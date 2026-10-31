@@ -12,7 +12,8 @@ Java 25+ (Spring Boot 4)
 `./mvnw clean install`
 
 ## Native image (GraalVM)
-The application can be compiled ahead of time into a native executable with
+The JVM build (`./mvnw clean install`) is the main build and the only one CI runs. A native executable is an
+optional alternative and is built manually. The application can be compiled ahead of time into a native executable with
 [GraalVM](https://www.graalvm.org/) (GraalVM CE for JDK 25, with `native-image`, plus gcc and zlib headers):
 
 ```
