@@ -179,6 +179,15 @@ class RateLimitIntegrationTest {
     }
 
     @Test
+    void givenLimiterThenItExpiresFromRedisSoonAfterItsLastUse() throws Exception {
+        mockMvc.perform(get(externalUrl(project("A")))).andExpect(status().isOk());
+
+        // 10 periods of 2s is less than the 1-minute minimum
+        long ttl = redisson.getRateLimiter("sdlc-rate:" + sdlcSystem.getId()).remainTimeToLive();
+        assertThat(ttl).isBetween(Duration.ofSeconds(50).toMillis(), Duration.ofMinutes(1).toMillis());
+    }
+
+    @Test
     void givenLimiterRemovedFromRedisThenItIsSetUpAgain() throws Exception {
         mockMvc.perform(get(externalUrl(project("A")))).andExpect(status().isOk());
         var limiter = redisson.getRateLimiter("sdlc-rate:" + sdlcSystem.getId());

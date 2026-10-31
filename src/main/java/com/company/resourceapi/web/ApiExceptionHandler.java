@@ -39,8 +39,14 @@ public class ApiExceptionHandler {
      */
     @ExceptionHandler(RateLimitExceededException.class)
     ResponseEntity<Void> handleRateLimitExceeded(RateLimitExceededException e) {
-        log.info(e.getMessage());
-        var status = e.getScope() == RateLimitExceededException.Scope.CALLER ? TOO_MANY_REQUESTS : SERVICE_UNAVAILABLE;
+        var caller = e.getScope() == RateLimitExceededException.Scope.CALLER;
+        // a refused caller is expected, possibly many times a second; holding back our own calls is worth seeing
+        if (caller) {
+            log.debug(e.getMessage());
+        } else {
+            log.info(e.getMessage());
+        }
+        var status = caller ? TOO_MANY_REQUESTS : SERVICE_UNAVAILABLE;
         return ResponseEntity.status(status).header(RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds())).build();
     }
 

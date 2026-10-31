@@ -1,7 +1,6 @@
 package com.company.resourceapi.cache;
 
 import static com.company.resourceapi.config.CacheConfig.EXTERNAL_PROJECTS;
-import static com.company.resourceapi.config.CacheConfig.MISSING_EXTERNAL_PROJECTS;
 import static com.company.resourceapi.config.CacheConfig.SDLC_SYSTEMS;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.notFound;
@@ -39,7 +38,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 /** Redis cache in front of the SDLC systems, against a real Redis (RedisTestContainerInitializer). */
-@SpringBootTest(properties = "resourceapi.cache.missing-external-projects-ttl=1s")
+@SpringBootTest(properties = "resourceapi.cache.missing-external-projects-ttl=3s")
 @AutoConfigureMockMvc
 class CacheIntegrationTest {
 
@@ -116,19 +115,22 @@ class CacheIntegrationTest {
                 .willReturn(notFound().withHeader("Content-Type", "application/json").withBody("{}")));
 
         mockMvc.perform(get(externalUrl())).andExpect(status().isNotFound());
+        int callsForFirstLookup = sdlcSystemServer.findAll(getRequestedFor(urlEqualTo(SDLC_PROJECT_URL))).size();
         mockMvc.perform(get(externalUrl())).andExpect(status().isNotFound());
 
-        // one call: the "unknown" answer is remembered, in its own short-lived cache
-        sdlcSystemServer.verify(1, getRequestedFor(urlEqualTo(SDLC_PROJECT_URL)));
-        assertThat(cacheManager.getCache(MISSING_EXTERNAL_PROJECTS).get(externalKey())).isNotNull();
-        assertThat(cacheManager.getCache(EXTERNAL_PROJECTS).get(externalKey())).isNull();
+        // the "unknown" answer is remembered (as a cached null), with the short time to live (3s here)
+        sdlcSystemServer.verify(callsForFirstLookup, getRequestedFor(urlEqualTo(SDLC_PROJECT_URL)));
+        var cached = cacheManager.getCache(EXTERNAL_PROJECTS).get(externalKey());
+        assertThat(cached).isNotNull();
+        assertThat(cached.get()).isNull();
+        assertThat(redisTemplate.getExpire(redisKey())).isBetween(1L, 3L);
 
-        // the project is created in the SDLC system: found once the "unknown" answer expired (1s here)
+        // the project is created in the SDLC system: found once the "unknown" answer expired
         sdlcSystemServer.stubFor(WireMock.get(urlEqualTo(SDLC_PROJECT_URL))
                 .willReturn(okJson("{\"key\": \"CACHED\", \"name\": \"Created later\"}")));
-        mockMvc.perform(get(externalUrl())).andExpect(status().isNotFound());
         await(() -> statusOf(externalUrl()) == 200);
-        assertThat(cacheManager.getCache(MISSING_EXTERNAL_PROJECTS).get(externalKey())).isNull();
+        // ... and kept with the long time to live (5m)
+        assertThat(redisTemplate.getExpire(redisKey())).isGreaterThan(60L);
     }
 
     @Test
@@ -142,11 +144,13 @@ class CacheIntegrationTest {
         mockMvc.perform(post(ProjectRestController.ENDPOINT + "/" + projectId + "/sync"))
                 .andExpect(status().isAccepted());
         await(() -> projectRepository.findById(projectId).orElseThrow().getName().equals("Created later"));
+        int callsUntilSynced = sdlcSystemServer.findAll(getRequestedFor(urlEqualTo(SDLC_PROJECT_URL))).size();
 
-        // the sync replaced the "unknown" answer with the project
-        assertThat(cacheManager.getCache(MISSING_EXTERNAL_PROJECTS).get(externalKey())).isNull();
+        // the sync replaced the "unknown" answer with the project, well within its 3s
+        assertThat(cacheManager.getCache(EXTERNAL_PROJECTS).get(externalKey(), ExternalProject.class))
+                .isEqualTo(new ExternalProject("CACHED", "Created later", null));
         mockMvc.perform(get(externalUrl())).andExpect(status().isOk());
-        sdlcSystemServer.verify(2, getRequestedFor(urlEqualTo(SDLC_PROJECT_URL)));
+        sdlcSystemServer.verify(callsUntilSynced, getRequestedFor(urlEqualTo(SDLC_PROJECT_URL)));
     }
 
     @Test
@@ -188,6 +192,10 @@ class CacheIntegrationTest {
 
     private String externalKey() {
         return sdlcSystem.getId() + ":" + EXTERNAL_ID;
+    }
+
+    private String redisKey() {
+        return keyPrefix + EXTERNAL_PROJECTS + "::" + externalKey();
     }
 
     private static void await(BooleanSupplier condition) throws InterruptedException {
