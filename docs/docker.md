@@ -46,6 +46,21 @@ Still the JVM and the same jar, plus two ahead-of-time optimizations:
   `application.aot`; containers start with `-XX:AOTCache=application.aot` and skip most of that work.
   Most of the speed-up comes from the cache (Spring AOT alone starts in about 4.3 s).
 
+No application properties are needed, only these JVM flags, which the image already sets:
+
+| Flag | When | Purpose |
+|---|---|---|
+| `-Dspring.aot.enabled=true` | runtime (`ENTRYPOINT`) | use Spring's generated code. Must be a JVM system property: `SPRING_AOT_ENABLED` as an environment variable or `application.properties` is **not** read, and without it Spring silently starts the normal way |
+| `-XX:AOTCache=application.aot` | runtime (`ENTRYPOINT`) | start from the AOT cache |
+| `-XX:AOTCacheOutput=application.aot` | image build (training run) | write the AOT cache |
+| `-Dspring.context.exit=onRefresh` | image build (training run) | stop as soon as the application has started |
+
+If you override the entrypoint, keep the two runtime flags; add other JVM options through `JAVA_TOOL_OPTIONS`.
+Heap limits (`-Xmx`, `docker run -m`) and a different garbage collector still use the cache (checked with
+`-XX:AOTMode=on`, which refuses to start when the cache can't be used). Because the training run starts the
+application during `docker build`, everything it needs at startup must be available then; this application
+only needs its in-memory H2 database.
+
 The cache only fits the exact JVM and class path it was created with, which is why it is created on the
 runtime image itself. If it can't be used, the JVM ignores it and starts normally (just slower). A few
 warnings like `class ... cannot be archived` during the build are expected: those classes come from the
