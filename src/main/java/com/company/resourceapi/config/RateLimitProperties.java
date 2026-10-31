@@ -4,6 +4,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.Duration;
+import org.springframework.aot.hint.MemberCategory;
+import org.springframework.aot.hint.annotation.RegisterReflection;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -16,6 +18,9 @@ import org.springframework.validation.annotation.Validated;
  */
 @Validated
 @ConfigurationProperties("resourceapi.rate-limit")
+// validation reads the record fields reflectively, which a native image must know about
+@RegisterReflection(classes = {RateLimitProperties.class, RateLimitProperties.Limit.class},
+        memberCategories = {MemberCategory.ACCESS_DECLARED_FIELDS, MemberCategory.INVOKE_DECLARED_METHODS})
 public record RateLimitProperties(@NotNull @Valid Limit sdlc, @NotNull @Valid Limit sync) {
 
     /**
