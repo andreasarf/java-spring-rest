@@ -17,6 +17,7 @@
 	<properties>
 		<java.version>25</java.version>
 		<springdoc-openapi.version>3.2.0</springdoc-openapi.version>
+		<redisson.version>4.8.0</redisson.version>
 		<wiremock.version>3.13.2</wiremock.version>
 		<jacoco.version>0.8.16</jacoco.version>
 		<!-- Overridden by agents such as JaCoCo; keeps @{argLine} resolvable when none is set -->
@@ -57,6 +58,12 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-cache</artifactId>
+		</dependency>
+		<dependency>
+			<!-- Distributed lock and rate limiter (plain client; its Spring Boot starter targets Boot 3) -->
+			<groupId>org.redisson</groupId>
+			<artifactId>redisson</artifactId>
+			<version>${redisson.version}</version>
 		</dependency>
 		<dependency>
 			<!-- Pooled HTTP client for RestClient (Boot picks it up when present) -->

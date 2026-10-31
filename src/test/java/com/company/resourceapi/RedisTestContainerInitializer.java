@@ -30,8 +30,10 @@ public class RedisTestContainerInitializer implements ApplicationContextInitiali
                 "spring.data.redis.host", REDIS.getHost(),
                 "spring.data.redis.port", REDIS.getMappedPort(6379))));
         // overrides application.properties
+        var contextId = "test-" + UUID.randomUUID();
         propertySources.addFirst(new MapPropertySource("redisTestContainerKeyPrefix", Map.of(
-                "spring.cache.redis.key-prefix", "test-" + UUID.randomUUID() + "::")));
+                "spring.cache.redis.key-prefix", contextId + "::",
+                "resourceapi.redisson.key-prefix", contextId + ":")));
     }
 
     private static synchronized void startOnce() {
