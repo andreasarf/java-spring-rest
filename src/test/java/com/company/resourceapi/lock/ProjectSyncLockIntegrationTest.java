@@ -27,6 +27,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -62,6 +63,9 @@ class ProjectSyncLockIntegrationTest {
 
     @Autowired
     private StringRedisTemplate redisTemplate;
+
+    @Autowired
+    private ConfigurableListableBeanFactory beanFactory;
 
     @Value("${resourceapi.redisson.key-prefix}")
     private String keyPrefix;
@@ -114,8 +118,12 @@ class ProjectSyncLockIntegrationTest {
         // the first sync releases the lock when it ends, long before its 30s lease would expire
         await(() -> projectRepository.findById(projectId).orElseThrow().getName().equals("New name"));
         await(() -> !redisson.getLock("project-sync:" + projectId).isLocked(), Duration.ofMillis(500));
-        mockMvc.perform(post(syncUrl)).andExpect(status().isAccepted());
+        // only the first sync called the SDLC system (checked before the next sync can call it)
         sdlcSystemServer.verify(1, getRequestedFor(urlEqualTo(SDLC_PROJECT_URL)));
+        mockMvc.perform(post(syncUrl)).andExpect(status().isAccepted());
+
+        // let that sync finish here, not during the next test
+        await(() -> !redisson.getLock("project-sync:" + projectId).isLocked());
     }
 
     @Test
@@ -149,5 +157,12 @@ class ProjectSyncLockIntegrationTest {
             assertThat(Instant.now()).as("condition not met within " + timeout).isBefore(deadline);
             Thread.sleep(50);
         }
+    }
+
+    @Test
+    void givenShutdownThenTaskExecutorStopsBeforeRedisson() {
+        // running syncs release their locks while the executor waits for them on shutdown
+        assertThat(beanFactory.getBeanDefinition("applicationTaskExecutor").getDependsOn())
+                .contains("redissonClient");
     }
 }
