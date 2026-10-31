@@ -66,6 +66,52 @@ runtime image itself. If it can't be used, the JVM ignores it and starts normall
 warnings like `class ... cannot be archived` during the build are expected: those classes come from the
 Java-version-specific part of a multi-release jar and are loaded normally.
 
+### Training an application that needs external services
+
+The training run is a real startup inside `docker build`: it runs the whole context refresh, including
+starting lifecycle beans, and only then exits. An application with a database, Redis or RabbitMQ
+therefore connects to them during the image build, where they usually don't exist. Typically:
+
+- **Database:** Hibernate connects at boot to read database metadata; Flyway/Liquibase run migrations.
+- **RabbitMQ:** listener containers start and connect; `RabbitAdmin` declares queues and exchanges.
+- **Redis:** mostly connects lazily, but health checks, Spring Session or cache warm-up can touch it.
+
+There are two ways to handle this.
+
+**1. A `training` profile with value-only settings.** Activate it on the training command only:
+
+```dockerfile
+RUN java -XX:AOTCacheOutput=application.aot -Dspring.aot.enabled=true -Dspring.profiles.active=training \
+        -Dspring.context.exit=onRefresh -jar application.jar
+```
+
+```properties
+# application-training.properties (example for PostgreSQL + RabbitMQ)
+# Hibernate: don't connect at boot to detect the database
+spring.jpa.properties.hibernate.boot.allow_jdbc_metadata_access=false
+spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
+# Hikari: don't fail when no connection can be made at startup
+spring.datasource.hikari.initialization-fail-timeout=-1
+# RabbitMQ listeners: created, but not started, so they don't connect
+spring.rabbitmq.listener.simple.auto-startup=false
+```
+
+The settings must change **values**, not switch beans on or off. With `-Dspring.aot.enabled=true` the
+bean decisions were made when the image was built, so a property that only appears in a condition (for
+example `spring.flyway.enabled=false` or `springdoc.api-docs.enabled=false`) is silently ignored. Profile
+property files themselves are still read. Both were checked on this image: `-Dspringdoc.api-docs.enabled=false`
+left `/v3/api-docs` up, while a value from an `application-training.properties` was applied. Migrations
+can't be skipped this way; they need a reachable database or a migration step outside the application.
+(The example settings above are a pattern for such applications; this application doesn't need them.)
+
+**2. Train against real services.** Run the training where the database, Redis and RabbitMQ are
+reachable, for example `docker compose up` for them plus `docker build --network host`, or a CI job with
+service containers. This gives the better cache: it only covers the classes the training run loaded, so
+every feature switched off for training (JDBC driver, Flyway, AMQP client, ...) is missing from the cache
+and loads the slow way in production.
+
+Either way, compare startup with and without `-XX:AOTCache` to see what the training gives you.
+
 ## Native executable: `Dockerfile.native`
 
 ```sh
