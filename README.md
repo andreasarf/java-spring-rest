@@ -39,5 +39,28 @@ injects uses Boot's single request factory, so there is one pool for the applica
 The client is tested against [WireMock](https://wiremock.org/) (`SdlcProjectClientTest`, `ExternalProjectIntegrationTest`,
 and `SdlcProjectClientPoolingTest`, which counts the connections actually opened).
 
+## API documentation
+The OpenAPI document is served at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`
+([springdoc-openapi](https://springdoc.org/)), generated from the controllers and their `@Operation`/`@Parameter`
+annotations. Only `/api/**` is documented.
+To turn both off (e.g. in production), set `springdoc.api-docs.enabled=false` and `springdoc.swagger-ui.enabled=false`.
+
+## Tracing
+Every request gets a trace id ([Micrometer Tracing](https://micrometer.io/docs/tracing) with Brave, W3C trace context):
+
+- an incoming `traceparent` (or B3) header is continued, otherwise a new trace starts
+- the trace id is returned in the `X-Trace-Id` response header, also on errors
+- log lines carry `[traceId-spanId]`, so a reported `X-Trace-Id` leads straight to its log lines
+- outgoing `RestClient` calls (e.g. to SDLC systems) send `traceparent`, so the trace continues there
+
+- background work keeps the trace: `@Async` tasks run on virtual threads (`spring.threads.virtual.enabled`) and
+  `ContextPropagatingTaskDecorator` copies the caller's trace context to them. Example:
+  `POST /api/v2/projects/{id}/sync` answers `202 Accepted` and refreshes the project's name from its SDLC system
+  in the background; its log lines and its call to the SDLC system carry the request's trace id. At most
+  `spring.task.execution.simple.concurrency-limit` (8) syncs run at once; further requests get `503` with `Retry-After`
+
+No spans are exported; add a reporter (e.g. Zipkin or OTLP) to send them to a tracing backend, and lower
+`management.tracing.sampling.probability` (set to `1.0` here) to what that backend can take.
+
 ## Testing
 There are scripts to test the Rest API in Postman.

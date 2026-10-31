@@ -16,7 +16,7 @@
 
 	<properties>
 		<java.version>25</java.version>
-		<swagger-annotations.version>2.2.55</swagger-annotations.version>
+		<springdoc-openapi.version>3.2.0</springdoc-openapi.version>
 		<wiremock.version>3.13.2</wiremock.version>
 		<jacoco.version>0.8.16</jacoco.version>
 		<!-- Overridden by agents such as JaCoCo; keeps @{argLine} resolvable when none is set -->
@@ -39,6 +39,15 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-restclient</artifactId>
+		</dependency>
+		<dependency>
+			<!-- Trace ids for incoming requests, log lines and outgoing RestClient calls (W3C traceparent) -->
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-micrometer-tracing-brave</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-tracing-bridge-brave</artifactId>
 		</dependency>
 		<dependency>
 			<!-- Pooled HTTP client for RestClient (Boot picks it up when present) -->
@@ -67,9 +76,10 @@
 			<optional>true</optional>
 		</dependency>
 		<dependency>
-			<groupId>io.swagger.core.v3</groupId>
-			<artifactId>swagger-annotations-jakarta</artifactId>
-			<version>${swagger-annotations.version}</version>
+			<!-- OpenAPI document (/v3/api-docs) and Swagger UI (/swagger-ui.html); brings the swagger annotations -->
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>${springdoc-openapi.version}</version>
 		</dependency>
 
 		<dependency>
