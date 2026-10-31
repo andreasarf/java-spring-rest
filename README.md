@@ -97,6 +97,17 @@ standalone Redis is supported for the lock: with Sentinel or Cluster the applica
 run unlocked; TLS uses the JVM's trust store (Boot SSL bundles aren't passed to Redisson). (Redisson's Spring Boot starter isn't used: it targets
 Spring Boot 3. Redisson brings a JCache provider, so `spring.cache.type=redis` is set explicitly.)
 
+**Rate limits** (Redisson `RRateLimiter`, token buckets shared by all instances):
+
+| Limit | Default | When exceeded |
+|---|---|---|
+| Calls to one SDLC system (`resourceapi.rate-limit.sdlc.*`), protecting its API quota; cache hits don't count | 10 per 1s, waiting up to 1s for a permit | `503` + `Retry-After` (our own limit, not the SDLC system's failure); a background sync logs it |
+| `POST /api/v2/projects/{id}/sync` per project (`resourceapi.rate-limit.sync.*`); requests refused anyway (unknown project, sync already running) don't count | 6 per minute | `429` + `Retry-After` |
+
+A changed rate is applied to the existing limiter when an instance first uses it; unused limiters expire from
+Redis after an hour. If Redis can't be reached, requests are allowed (limiting protects, losing it shouldn't
+stop the application).
+
 **Local development**: `./mvnw spring-boot:run` starts Redis from `compose.yaml` automatically
 (`spring-boot-docker-compose`); with `java -jar`, start it yourself with `docker compose up -d` (it listens on
 `localhost:6379`). Tests start their own Redis with Testcontainers, so they need Docker.

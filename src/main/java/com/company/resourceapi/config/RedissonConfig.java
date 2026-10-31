@@ -10,6 +10,7 @@ import org.redisson.config.NameMapper;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisConnectionDetails;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisProperties;
 import org.springframework.context.annotation.Bean;
@@ -25,6 +26,7 @@ import org.springframework.context.annotation.Configuration;
  * back to running without it. TLS uses the JVM's trust store (Boot SSL bundles aren't passed on).
  */
 @Configuration
+@EnableConfigurationProperties(RateLimitProperties.class)
 public class RedissonConfig {
 
     static final String REDISSON_CLIENT = "redissonClient";
