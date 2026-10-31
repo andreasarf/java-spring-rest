@@ -9,11 +9,11 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
 
 import com.company.resourceapi.clients.ExternalProject;
-import com.company.resourceapi.clients.SdlcProjectClient;
 import com.company.resourceapi.entities.Project;
 import com.company.resourceapi.entities.SdlcSystem;
 import com.company.resourceapi.exceptions.ConflictException;
 import com.company.resourceapi.exceptions.NotFoundException;
+import com.company.resourceapi.services.ExternalProjectService;
 import com.company.resourceapi.services.ProjectService;
 import com.company.resourceapi.services.SdlcSystemService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -58,7 +58,7 @@ public class ProjectRestController {
 
     private final ProjectService projectService;
     private final SdlcSystemService sdlcSystemService;
-    private final SdlcProjectClient sdlcProjectClient;
+    private final ExternalProjectService externalProjectService;
 
     @Operation(summary = "Get a Project")
     @GetMapping(ENDPOINT_ID)
@@ -74,7 +74,7 @@ public class ProjectRestController {
             @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
             @PathVariable(PATH_VARIABLE_ID) final long projectId) throws NotFoundException {
         var project = projectService.getProject(projectId);
-        return sdlcProjectClient.fetchProject(project.getSdlcSystem(), project.getExternalId())
+        return externalProjectService.findProject(project.getSdlcSystem(), project.getExternalId())
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.status(NOT_FOUND).build());
     }

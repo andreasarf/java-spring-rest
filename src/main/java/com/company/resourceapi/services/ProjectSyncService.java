@@ -2,7 +2,6 @@ package com.company.resourceapi.services;
 
 import static java.util.concurrent.CompletableFuture.completedFuture;
 
-import com.company.resourceapi.clients.SdlcProjectClient;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +17,8 @@ import org.springframework.web.client.RestClientResponseException;
 public class ProjectSyncService {
 
     private final ProjectService projectService;
-    private final SdlcProjectClient sdlcProjectClient;
+    /** Bypasses the cache (a sync must see the current state) and refreshes it. */
+    private final ExternalProjectService externalProjectService;
 
     /**
      * Runs on a virtual thread of the application task executor, in the caller's trace. Failures are
@@ -33,7 +33,7 @@ public class ProjectSyncService {
             var externalId = project.getExternalId();
             var sdlcSystemId = project.getSdlcSystem().getId();
 
-            var externalProject = sdlcProjectClient.fetchProject(project.getSdlcSystem(), externalId);
+            var externalProject = externalProjectService.refreshProject(project.getSdlcSystem(), externalId);
             if (externalProject.isEmpty()) {
                 log.warn("Project {} ({}) is unknown to its SDLC system", projectId, externalId);
                 return completedFuture(null);
