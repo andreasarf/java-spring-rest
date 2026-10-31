@@ -8,13 +8,14 @@ run it, running as a non-root user on port 8080. Tests are not run during the im
 |---|---|---|---|
 | What runs | Spring Boot jar on a JRE | Spring Boot jar on a JRE, with Spring AOT and a Java 25 AOT cache | Native executable, no JVM |
 | Base images | `eclipse-temurin:25-jdk` → `eclipse-temurin:25-jre` | same | `ghcr.io/graalvm/native-image-community:25` → `debian:bookworm-slim` |
-| Image size | ~600 MB | ~750 MB | (being measured) |
-| Startup | ~5.4 s | ~1.4 s | (being measured) |
-| Memory after start | ~300 MB | ~320 MB | (being measured) |
-| Build | ~1 min after dependencies are cached | ~1 min | (being measured), needs ~10 GB memory |
+| Image size | ~600 MB | ~750 MB (incl. the 125 MB AOT cache) | ~400 MB |
+| Startup | ~5.4 s | ~1.4 s | ~0.27 s |
+| Memory after start | ~300 MB | ~320 MB | ~90 MB |
+| Build | ~1 min after dependencies are cached | ~1 min | ~6 min, needs ~10 GB memory |
 | Configuration at runtime | everything | values only (see below) | values only (see below) |
 
-Measured on a 4-core / 16 GB machine; startup is Spring Boot's own "Started ... in" time.
+Measured on a 4-core / 16 GB machine: startup is Spring Boot's own "Started ... in" time (median of three),
+memory is `docker stats` right after startup, image size as reported by `docker images`.
 
 ## Standard: `Dockerfile`
 
