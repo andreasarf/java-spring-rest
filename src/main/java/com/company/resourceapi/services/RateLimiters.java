@@ -18,18 +18,24 @@ import org.springframework.stereotype.Component;
  * <p>A limiter is set up with the configured rate the first time this instance uses it (updating a
  * limiter created with another rate), and again if Redis dropped it after it expired from disuse.
  * Without Redis (unreachable, or no Redisson client) requests are allowed: limiting is a protection,
- * losing it shouldn't stop the application.
+ * losing it shouldn't stop the application. After a failure Redis is left alone for a short while,
+ * so an outage doesn't add a Redis timeout to every request.
  */
 @Component
 @Slf4j
 public class RateLimiters {
 
-    /** Unused limiters are removed from Redis after this. */
-    private static final Duration KEEP_ALIVE = Duration.ofHours(1);
+    /** Unused limiters are removed from Redis after this many periods, but not sooner than MIN_KEEP_ALIVE. */
+    private static final int KEEP_ALIVE_PERIODS = 10;
+    private static final Duration MIN_KEEP_ALIVE = Duration.ofMinutes(1);
+    /** How long requests are allowed without asking Redis after it failed. */
+    static final Duration PAUSE_AFTER_FAILURE = Duration.ofSeconds(10);
     /** Limiters this instance has set up, most recently used kept (bounded: one per project). */
     private static final int MAX_REMEMBERED = 10_000;
 
     private final RedissonClient redisson;
+    /** System.nanoTime() until which Redis isn't asked; 0 while it works. */
+    private volatile long pausedUntil;
     private final Map<String, Boolean> setUp = Collections.synchronizedMap(new LinkedHashMap<>(16, 0.75f, true) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
@@ -43,7 +49,7 @@ public class RateLimiters {
 
     /** @return whether a permit was obtained, waiting at most the limit's max wait */
     public boolean tryAcquire(String name, RateLimitProperties.Limit limit) {
-        if (redisson == null) {
+        if (redisson == null || isPaused()) {
             return true;
         }
         try {
@@ -62,9 +68,28 @@ public class RateLimiters {
                 return acquire(limiter, limit);
             }
         } catch (RuntimeException e) {
-            log.warn("Rate limiter {} unavailable, allowing the request: {}", name, e.getMessage());
+            pausedUntil = System.nanoTime() + PAUSE_AFTER_FAILURE.toNanos();
+            log.warn("Rate limiter {} unavailable, allowing requests without rate limits for {}: {}",
+                    name, PAUSE_AFTER_FAILURE, e.getMessage());
             return true;
         }
+    }
+
+    private boolean isPaused() {
+        long until = pausedUntil;
+        if (until == 0) {
+            return false;
+        }
+        if (System.nanoTime() - until < 0) {
+            return true;
+        }
+        pausedUntil = 0;
+        return false;
+    }
+
+    static Duration keepAlive(RateLimitProperties.Limit limit) {
+        var periods = limit.period().multipliedBy(KEEP_ALIVE_PERIODS);
+        return periods.compareTo(MIN_KEEP_ALIVE) > 0 ? periods : MIN_KEEP_ALIVE;
     }
 
     private static boolean acquire(RRateLimiter limiter, RateLimitProperties.Limit limit) {
@@ -72,7 +97,7 @@ public class RateLimiters {
     }
 
     private void setUp(String name, RRateLimiter limiter, RateLimitProperties.Limit limit) {
-        var keepAlive = Duration.ofMillis(Math.max(KEEP_ALIVE.toMillis(), limit.period().toMillis()));
+        var keepAlive = keepAlive(limit);
         boolean created = limiter.trySetRateAsync(RateType.OVERALL, limit.permits(), limit.period(), keepAlive)
                 .toCompletableFuture().join();
         if (!created) {
