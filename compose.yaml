@@ -1,0 +1,7 @@
+# Local development services. `./mvnw spring-boot:run` starts them automatically
+# (spring-boot-docker-compose); or run `docker compose up -d` yourself.
+services:
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "6379"

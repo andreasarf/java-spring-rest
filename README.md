@@ -71,6 +71,25 @@ The OpenAPI document is served at `/v3/api-docs` and Swagger UI at `/swagger-ui.
 annotations. Only `/api/**` is documented.
 To turn both off (e.g. in production), set `springdoc.api-docs.enabled=false` and `springdoc.swagger-ui.enabled=false`.
 
+## Redis
+The application uses Redis (`spring.data.redis.host`/`port`, default `localhost:6379`).
+
+**Cache** (Spring Cache on Spring Data Redis, values stored as JSON):
+
+| Cache | What | TTL |
+|---|---|---|
+| `sdlc-systems` | SDLC systems by id, read on every create, update and SDLC call | `resourceapi.cache.sdlc-systems-ttl` (10m) |
+| `external-projects` | `GET /api/v2/projects/{id}/external` answers per SDLC system and external id; "unknown" answers are not cached | `resourceapi.cache.external-projects-ttl` (5m) |
+
+A background sync always asks the SDLC system and refreshes the cached answer. SDLC systems are not changed
+through this API; one changed directly in the database is picked up when its entry expires. The cache is an
+optimization: if Redis is unreachable, cache reads and writes are logged and skipped (each waits at most the
+500 ms Redis timeouts) and requests are served without it.
+
+**Local development**: `./mvnw spring-boot:run` starts Redis from `compose.yaml` automatically
+(`spring-boot-docker-compose`); with `java -jar`, start it yourself with `docker compose up -d` and point
+`spring.data.redis.port` at it. Tests start their own Redis with Testcontainers, so they need Docker.
+
 ## Tracing
 Every request gets a trace id ([Micrometer Tracing](https://micrometer.io/docs/tracing) with Brave, W3C trace context):
 

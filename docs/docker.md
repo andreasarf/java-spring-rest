@@ -125,9 +125,12 @@ the build. The executable is built for the architecture of the machine (or `--pl
 
 ## Configuration
 
-All three images are configured like the application itself, e.g. with environment variables:
+All three images are configured like the application itself, e.g. with environment variables. The
+application uses Redis (see the README); point it at one with `SPRING_DATA_REDIS_HOST`/`SPRING_DATA_REDIS_PORT`
+(without Redis it still works, uncached):
 
 ```sh
+docker run --rm -p 8080:8080 -e SPRING_DATA_REDIS_HOST=redis --network my-network resourceapi
 docker run --rm -p 9090:9090 -e SERVER_PORT=9090 resourceapi
 docker run --rm -p 8080:8080 -e SPRING_HTTP_CLIENTS_READ_TIMEOUT=10s resourceapi:aot
 ```

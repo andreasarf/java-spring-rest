@@ -7,8 +7,8 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.company.resourceapi.clients.SdlcProjectClient;
 import com.company.resourceapi.entities.SdlcSystem;
+import com.company.resourceapi.services.ExternalProjectService;
 import com.company.resourceapi.services.ProjectService;
 import com.company.resourceapi.services.SdlcSystemService;
 import java.sql.SQLException;
@@ -36,7 +36,7 @@ class ProjectRestControllerConflictTest {
     private SdlcSystemService sdlcSystemService;
 
     @MockitoBean
-    private SdlcProjectClient sdlcProjectClient;
+    private ExternalProjectService externalProjectService;
 
     @Test
     void givenConcurrentDuplicateWhenPostThenReturnStatusConflict() throws Exception {
