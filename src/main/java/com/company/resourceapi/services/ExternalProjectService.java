@@ -7,8 +7,10 @@ import com.company.resourceapi.clients.SdlcProjectClient;
 import com.company.resourceapi.entities.SdlcSystem;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 
 /** Projects as described by their SDLC system, cached per SDLC system and external id. */
@@ -24,8 +26,16 @@ public class ExternalProjectService {
         return sdlcProjectClient.fetchProject(sdlcSystem, externalId);
     }
 
-    /** Always asks the SDLC system, and puts the fresh answer in the cache. */
-    @CachePut(cacheNames = EXTERNAL_PROJECTS, key = "#sdlcSystem.id + ':' + #externalId", unless = "#result == null")
+    /**
+     * Always asks the SDLC system and updates the cache with the answer: a found project replaces the
+     * cached one, a project the SDLC system no longer knows removes it.
+     */
+    @Caching(
+            put = @CachePut(cacheNames = EXTERNAL_PROJECTS, key = "#sdlcSystem.id + ':' + #externalId",
+                    unless = "#result == null"),
+            // unlike for @CachePut, #result is the Optional itself here (late evictions get the raw return value)
+            evict = @CacheEvict(cacheNames = EXTERNAL_PROJECTS, key = "#sdlcSystem.id + ':' + #externalId",
+                    condition = "#result == null or #result.isEmpty()"))
     public Optional<ExternalProject> refreshProject(SdlcSystem sdlcSystem, String externalId) {
         return sdlcProjectClient.fetchProject(sdlcSystem, externalId);
     }
