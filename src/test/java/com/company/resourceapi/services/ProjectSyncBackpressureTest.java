@@ -24,7 +24,10 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
 /** Background syncs are bounded: beyond the executor's limit they are rejected, not queued. */
-@SpringBootTest(properties = "spring.task.execution.simple.concurrency-limit=1")
+@SpringBootTest(properties = {
+        "spring.task.execution.simple.concurrency-limit=1",
+        // this test retries refused syncs; the per-project sync rate limit isn't what it is about
+        "resourceapi.rate-limit.sync.permits=1000"})
 @AutoConfigureMockMvc
 class ProjectSyncBackpressureTest {
 
