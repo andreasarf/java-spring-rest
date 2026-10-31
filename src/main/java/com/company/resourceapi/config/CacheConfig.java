@@ -26,6 +26,7 @@ public class CacheConfig {
 
     public static final String SDLC_SYSTEMS = "sdlc-systems";
     public static final String EXTERNAL_PROJECTS = "external-projects";
+    public static final String MISSING_EXTERNAL_PROJECTS = "external-projects-missing";
 
     /**
      * Starts from Boot's defaults (spring.cache.redis.*: key prefix, null values, ...) and only
@@ -45,7 +46,8 @@ public class CacheConfig {
             var defaults = builder.cacheDefaults().serializeValuesWith(SerializationPair.fromSerializer(serializer));
             builder.cacheDefaults(defaults)
                     .withCacheConfiguration(SDLC_SYSTEMS, defaults.entryTtl(ttl.sdlcSystemsTtl()))
-                    .withCacheConfiguration(EXTERNAL_PROJECTS, defaults.entryTtl(ttl.externalProjectsTtl()));
+                    .withCacheConfiguration(EXTERNAL_PROJECTS, defaults.entryTtl(ttl.externalProjectsTtl()))
+                    .withCacheConfiguration(MISSING_EXTERNAL_PROJECTS, defaults.entryTtl(ttl.missingExternalProjectsTtl()));
         };
     }
 

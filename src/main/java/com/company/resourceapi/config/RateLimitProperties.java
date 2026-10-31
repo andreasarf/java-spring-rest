@@ -11,12 +11,13 @@ import org.springframework.validation.annotation.Validated;
  * Distributed rate limits ({@code resourceapi.rate-limit.*}), shared by all instances through Redis.
  * Validated at startup: a broken limit would otherwise fail, or silently stop limiting, at runtime.
  *
- * @param sdlc calls to one SDLC system (protects its API quota)
- * @param sync sync requests for one project
+ * @param sdlc   calls to one SDLC system (protects its API quota)
+ * @param sync   sync requests for one project
+ * @param client API requests from one client (IP address)
  */
 @Validated
 @ConfigurationProperties("resourceapi.rate-limit")
-public record RateLimitProperties(@NotNull @Valid Limit sdlc, @NotNull @Valid Limit sync) {
+public record RateLimitProperties(@NotNull @Valid Limit sdlc, @NotNull @Valid Limit sync, @NotNull @Valid Limit client) {
 
     /**
      * At most {@code permits} per sliding window of {@code period}: each permit becomes available again

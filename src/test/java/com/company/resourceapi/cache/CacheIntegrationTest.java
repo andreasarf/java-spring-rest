@@ -1,6 +1,7 @@
 package com.company.resourceapi.cache;
 
 import static com.company.resourceapi.config.CacheConfig.EXTERNAL_PROJECTS;
+import static com.company.resourceapi.config.CacheConfig.MISSING_EXTERNAL_PROJECTS;
 import static com.company.resourceapi.config.CacheConfig.SDLC_SYSTEMS;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.notFound;
@@ -38,7 +39,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 /** Redis cache in front of the SDLC systems, against a real Redis (RedisTestContainerInitializer). */
-@SpringBootTest
+@SpringBootTest(properties = "resourceapi.cache.missing-external-projects-ttl=1s")
 @AutoConfigureMockMvc
 class CacheIntegrationTest {
 
@@ -92,29 +93,60 @@ class CacheIntegrationTest {
         sdlcSystemServer.stubFor(WireMock.get(urlEqualTo(SDLC_PROJECT_URL))
                 .willReturn(okJson("{\"key\": \"CACHED\", \"name\": \"From SDLC\"}")));
 
-        for (int i = 0; i < 3; i++) {
+        mockMvc.perform(get(externalUrl())).andExpect(status().isOk());
+        // counted after the first lookup: the HTTP client may retry a GET on a stale pooled connection
+        int callsForFirstLookup = sdlcSystemServer.findAll(getRequestedFor(urlEqualTo(SDLC_PROJECT_URL))).size();
+
+        for (int i = 0; i < 2; i++) {
             mockMvc.perform(get(externalUrl()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.name", equalTo("From SDLC")));
         }
 
-        sdlcSystemServer.verify(1, getRequestedFor(urlEqualTo(SDLC_PROJECT_URL)));
+        // the next lookups are served from the cache
+        sdlcSystemServer.verify(callsForFirstLookup, getRequestedFor(urlEqualTo(SDLC_PROJECT_URL)));
         // stored as JSON in Redis and read back as the record, not a map
         assertThat(cacheManager.getCache(EXTERNAL_PROJECTS).get(externalKey(), ExternalProject.class))
                 .isEqualTo(new ExternalProject("CACHED", "From SDLC", null));
     }
 
     @Test
-    void givenProjectUnknownToSdlcSystemThenItIsNotCached() throws Exception {
+    void givenProjectUnknownToSdlcSystemThenThatIsRememberedBriefly() throws Exception {
         sdlcSystemServer.stubFor(WireMock.get(urlEqualTo(SDLC_PROJECT_URL))
                 .willReturn(notFound().withHeader("Content-Type", "application/json").withBody("{}")));
 
         mockMvc.perform(get(externalUrl())).andExpect(status().isNotFound());
         mockMvc.perform(get(externalUrl())).andExpect(status().isNotFound());
 
-        // asked again, so the project is found as soon as it exists in the SDLC system
-        sdlcSystemServer.verify(2, getRequestedFor(urlEqualTo(SDLC_PROJECT_URL)));
+        // one call: the "unknown" answer is remembered, in its own short-lived cache
+        sdlcSystemServer.verify(1, getRequestedFor(urlEqualTo(SDLC_PROJECT_URL)));
+        assertThat(cacheManager.getCache(MISSING_EXTERNAL_PROJECTS).get(externalKey())).isNotNull();
         assertThat(cacheManager.getCache(EXTERNAL_PROJECTS).get(externalKey())).isNull();
+
+        // the project is created in the SDLC system: found once the "unknown" answer expired (1s here)
+        sdlcSystemServer.stubFor(WireMock.get(urlEqualTo(SDLC_PROJECT_URL))
+                .willReturn(okJson("{\"key\": \"CACHED\", \"name\": \"Created later\"}")));
+        mockMvc.perform(get(externalUrl())).andExpect(status().isNotFound());
+        await(() -> statusOf(externalUrl()) == 200);
+        assertThat(cacheManager.getCache(MISSING_EXTERNAL_PROJECTS).get(externalKey())).isNull();
+    }
+
+    @Test
+    void givenProjectRememberedAsUnknownWhenSyncedThenItIsFoundRightAway() throws Exception {
+        sdlcSystemServer.stubFor(WireMock.get(urlEqualTo(SDLC_PROJECT_URL))
+                .willReturn(notFound().withHeader("Content-Type", "application/json").withBody("{}")));
+        mockMvc.perform(get(externalUrl())).andExpect(status().isNotFound());
+
+        sdlcSystemServer.stubFor(WireMock.get(urlEqualTo(SDLC_PROJECT_URL))
+                .willReturn(okJson("{\"key\": \"CACHED\", \"name\": \"Created later\"}")));
+        mockMvc.perform(post(ProjectRestController.ENDPOINT + "/" + projectId + "/sync"))
+                .andExpect(status().isAccepted());
+        await(() -> projectRepository.findById(projectId).orElseThrow().getName().equals("Created later"));
+
+        // the sync replaced the "unknown" answer with the project
+        assertThat(cacheManager.getCache(MISSING_EXTERNAL_PROJECTS).get(externalKey())).isNull();
+        mockMvc.perform(get(externalUrl())).andExpect(status().isOk());
+        sdlcSystemServer.verify(2, getRequestedFor(urlEqualTo(SDLC_PROJECT_URL)));
     }
 
     @Test
@@ -190,5 +222,13 @@ class CacheIntegrationTest {
         await(() -> cacheManager.getCache(EXTERNAL_PROJECTS).get(externalKey()) == null);
 
         mockMvc.perform(get(externalUrl())).andExpect(status().isNotFound());
+    }
+
+    private int statusOf(String url) {
+        try {
+            return mockMvc.perform(get(url)).andReturn().getResponse().getStatus();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

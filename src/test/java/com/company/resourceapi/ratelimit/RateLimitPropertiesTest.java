@@ -18,9 +18,9 @@ class RateLimitPropertiesTest {
         var noPeriod = new Limit(5, null, Duration.ZERO);
         var valid = new Limit(5, Duration.ofSeconds(1), Duration.ZERO);
 
-        assertThat(validator.validate(new RateLimitProperties(noPermits, valid))).hasSize(1);
-        assertThat(validator.validate(new RateLimitProperties(valid, noPeriod))).hasSize(1);
-        assertThat(validator.validate(new RateLimitProperties(valid, valid))).isEmpty();
+        assertThat(validator.validate(new RateLimitProperties(noPermits, valid, valid))).hasSize(1);
+        assertThat(validator.validate(new RateLimitProperties(valid, noPeriod, valid))).hasSize(1);
+        assertThat(validator.validate(new RateLimitProperties(valid, valid, valid))).isEmpty();
     }
 
     @Test
