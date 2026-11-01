@@ -8,6 +8,7 @@ import com.company.resourceapi.events.ProjectUpdated.Field;
 import com.company.resourceapi.exceptions.ConflictException;
 import com.company.resourceapi.repositories.SdlcSystemRepository;
 import com.company.resourceapi.services.ProjectService;
+import java.time.Instant;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,10 +44,13 @@ class ProjectEventsTest {
 
     @Test
     void givenCreatedProjectThenProjectCreatedIsPublished() {
+        var before = Instant.now();
         var project = projectService.createProject(newProject("EVENTS-1", "Name"));
 
-        assertThat(events.stream(ProjectCreated.class)).containsExactly(
-                new ProjectCreated(project.getId(), sdlcSystem.getId(), "EVENTS-1", "Name"));
+        var event = events.stream(ProjectCreated.class).findFirst().orElseThrow();
+        assertThat(event).usingRecursiveComparison().ignoringFields("occurredAt").isEqualTo(
+                new ProjectCreated(project.getId(), sdlcSystem.getId(), "EVENTS-1", "Name", null));
+        assertThat(event.occurredAt()).isBetween(before, Instant.now());
     }
 
     @Test
@@ -55,8 +59,12 @@ class ProjectEventsTest {
 
         projectService.updateProject(id, project -> project.setName("New name"));
 
-        assertThat(events.stream(ProjectUpdated.class)).containsExactly(
-                new ProjectUpdated(id, sdlcSystem.getId(), "EVENTS-2", "New name", Set.of(Field.NAME)));
+        var event = events.stream(ProjectUpdated.class).findFirst().orElseThrow();
+        assertThat(event).usingRecursiveComparison().ignoringFields("occurredAt").isEqualTo(
+                new ProjectUpdated(id, sdlcSystem.getId(), "EVENTS-2", "New name", Set.of(Field.NAME), null));
+        // later than the creation's
+        assertThat(event.occurredAt()).isAfterOrEqualTo(events.stream(ProjectCreated.class).findFirst()
+                .orElseThrow().occurredAt());
     }
 
     @Test
