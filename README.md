@@ -81,6 +81,28 @@ The listener runs on the request thread after commit; it only starts the sync, b
 lock attempt adds about a second to the request (see Lock below).
 Turn it off with `resourceapi.sync.on-change=false` (tests do, except `SyncOnProjectChangeTest`).
 
+## Notifications (RabbitMQ)
+Other systems learn about project changes from RabbitMQ (`spring.rabbitmq.*`, default `localhost:5672`):
+`ProjectCreated` and `ProjectUpdated` are sent as JSON to the topic exchange `resourceapi.projects`
+(`resourceapi.notifications.exchange`) with routing keys `project.created` and `project.updated`. Messages carry
+the request's trace (`traceparent` header).
+
+No notification is lost, even if RabbitMQ is down or the application stops right after a change (an outbox):
+
+1. Spring Modulith's event publication registry stores each event in the `event_publication` table, in the
+   transaction that changed the project: it exists exactly if the change was committed.
+2. After commit, `ProjectNotifier` sends it in the background (its own virtual-thread executor, so a slow broker
+   doesn't hold up requests) and waits for the broker's confirmation (publisher confirms). Only then is the row
+   deleted.
+3. A send that failed or wasn't confirmed leaves the row; `UnsentNotifications` sends such events again
+   (`resourceapi.notifications.resubmit-interval` 1m, for events older than `resubmit-after` 1m). With several
+   instances, one does it at a time (Redis lock).
+
+Delivery is therefore at least once: a consumer may see the same notification twice (e.g. the broker confirmed
+but the application stopped before deleting the row) and should handle that, e.g. by treating them as "the
+project now looks like this". Modulith's own RabbitMQ externalization isn't used: in its default mode it doesn't
+wait for the broker's confirmation, so a message the broker refused would count as sent.
+
 ## API documentation
 The OpenAPI document is served at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`
 ([springdoc-openapi](https://springdoc.org/)), generated from the controllers and their `@Operation`/`@Parameter`
@@ -134,9 +156,10 @@ load balancer has another address, set that property to match it; otherwise ever
 the proxy and all clients share one limit. Never match addresses clients can connect from directly, or they
 can choose their own key by sending `X-Forwarded-For`.
 
-**Local development**: `./mvnw spring-boot:run` starts Redis from `compose.yaml` automatically
-(`spring-boot-docker-compose`); with `java -jar`, start it yourself with `docker compose up -d` (it listens on
-`localhost:6379`). Tests start their own Redis with Testcontainers, so they need Docker.
+**Local development**: `./mvnw spring-boot:run` starts Redis and RabbitMQ from `compose.yaml` automatically
+(`spring-boot-docker-compose`); with `java -jar`, start them yourself with `docker compose up -d` (Redis on
+`localhost:6379`, RabbitMQ on `localhost:5672`, its management UI on http://localhost:15672, guest/guest).
+Tests start their own Redis and RabbitMQ with Testcontainers, so they need Docker.
 
 ## Tracing
 Every request gets a trace id ([Micrometer Tracing](https://micrometer.io/docs/tracing) with Brave, W3C trace context):
