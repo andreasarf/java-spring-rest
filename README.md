@@ -73,6 +73,9 @@ changes a project:
 - `ProjectUpdated`, with the new state and which fields changed (`NAME`, `EXTERNAL_ID`, `SDLC_SYSTEM`); not
   published when an update changes nothing. Changes made by a sync from the SDLC system are published too.
 
+Both carry `occurredAt`, when the change was made: events about one project can reach a listener out of order
+(e.g. one retried later), so an event older than the last one applied is stale.
+
 Listeners use `@TransactionalEventListener`, so they only see committed changes. `SyncOnProjectChange`
 starts a background sync (as `POST /api/v2/projects/{id}/sync` does) when a project is created or re-keyed
 (pointed at another SDLC project), so its name comes from the SDLC system without the client asking. A sync
@@ -107,14 +110,17 @@ No notification is lost, even if RabbitMQ is down or the application stops right
 
 1. Spring Modulith's event publication registry stores each event in the `event_publication` table, in the
    transaction that changed the project: it exists exactly if the change was committed.
-2. After commit, `ProjectNotifier` sends it in the background (its own virtual-thread executor, so a slow broker
-   doesn't hold up requests) and waits for the broker's confirmation (publisher confirms). Only then is the row
-   deleted.
+2. After commit, `ProjectNotifier` sends it in the background and waits for the broker's confirmation (publisher
+   confirms). Only then is the row deleted. Sends run on their own virtual-thread executor, at most 16 at once;
+   when all are busy (e.g. waiting for an unreachable broker) a further send is refused instead of holding up the
+   request (Spring logs the `TaskRejectedException`), and its event stays in the table.
 3. A send that failed or wasn't confirmed leaves the row; `UnsentNotifications` sends such events again
    (`resourceapi.notifications.resubmit-interval` 1m, for events older than `resubmit-after` 1m). With several
    instances, one does it at a time (Redis lock).
 
-Delivery is therefore at least once: a consumer may see the same notification twice (e.g. the broker confirmed
+Notifications about one project can arrive out of order (they are sent in parallel, and a resent one arrives
+late): consumers should use `occurredAt` and ignore one older than the last they applied. Delivery is at least
+once: a consumer may see the same notification twice (e.g. the broker confirmed
 but the application stopped before deleting the row) and should handle that, e.g. by treating them as "the
 project now looks like this". Modulith's own RabbitMQ externalization isn't used: in its default mode it doesn't
 wait for the broker's confirmation, so a message the broker refused would count as sent.

@@ -38,15 +38,17 @@ public class NotificationsConfig {
     }
 
     /**
-     * Sends run here, not on the application task executor: its limit is for syncs, and a burst of
-     * project changes shouldn't get notifications rejected. Virtual threads, in the caller's trace; at
-     * most 16 sends at once, further ones wait for a free slot.
+     * Sends run here, not on the application task executor, whose limit is for other background work.
+     * Virtual threads, in the caller's trace. At most 16 sends at once; when all are busy (e.g. each
+     * waiting for an unreachable broker) a further send is refused rather than making the request wait
+     * for a free slot: its event stays in the outbox and is sent again later.
      */
     @Bean
     SimpleAsyncTaskExecutor notificationExecutor() {
         var executor = new SimpleAsyncTaskExecutor("notify-");
         executor.setVirtualThreads(true);
         executor.setConcurrencyLimit(16);
+        executor.setRejectTasksWhenLimitReached(true);
         executor.setTaskDecorator(new ContextPropagatingTaskDecorator());
         return executor;
     }
