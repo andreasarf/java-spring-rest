@@ -13,8 +13,8 @@ import org.testcontainers.utility.DockerImageName;
  * Gives every test application context a real RabbitMQ: one container, started on first use and
  * shared by all contexts of the test run (registered in META-INF/spring.factories).
  *
- * <p>Each context gets its own notifications exchange: contexts have their own in-memory database,
- * so the same project id can be sent by two contexts. A test can still point at another broker with
+ * <p>Each context gets its own notifications exchange and sync queue: contexts have their own
+ * in-memory database, so the same project id means different projects in two contexts. A test can still point at another broker with
  * its own {@code spring.rabbitmq.*} properties.
  */
 public class RabbitTestContainerInitializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
@@ -33,8 +33,10 @@ public class RabbitTestContainerInitializer implements ApplicationContextInitial
                 "spring.rabbitmq.host", RABBITMQ.getHost(),
                 "spring.rabbitmq.port", RABBITMQ.getMappedPort(5672))));
         // overrides application.properties
-        propertySources.addFirst(new MapPropertySource("rabbitTestContainerExchange", Map.of(
-                "resourceapi.notifications.exchange", "test-" + UUID.randomUUID())));
+        var contextId = "test-" + UUID.randomUUID();
+        propertySources.addFirst(new MapPropertySource("rabbitTestContainerNames", Map.of(
+                "resourceapi.notifications.exchange", contextId,
+                "resourceapi.sync.queue", contextId + "-sync")));
     }
 
     private static synchronized void startOnce() {

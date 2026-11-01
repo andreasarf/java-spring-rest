@@ -13,8 +13,9 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * project there, so clients don't have to request a sync themselves.
  *
  * <p>Runs after the change is committed (a rolled-back change starts nothing), on the request
- * thread, which only starts the sync: the sync itself runs in the background. A sync that can't start
- * now (one is running, rate limited, no free slot) is logged and skipped; it can be requested later.
+ * thread, which only queues the sync: the sync itself runs in the background. A sync that can't be
+ * queued now (one is queued or running, rate limited, RabbitMQ unreachable) is logged and skipped; it
+ * can be requested later.
  */
 @Component
 @ConditionalOnBooleanProperty(name = "resourceapi.sync.on-change", matchIfMissing = true)

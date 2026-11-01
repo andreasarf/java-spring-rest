@@ -76,10 +76,26 @@ changes a project:
 Listeners use `@TransactionalEventListener`, so they only see committed changes. `SyncOnProjectChange`
 starts a background sync (as `POST /api/v2/projects/{id}/sync` does) when a project is created or re-keyed
 (pointed at another SDLC project), so its name comes from the SDLC system without the client asking. A sync
-that can't start right then (one is running, rate limited, no free background slot) is logged and skipped.
-The listener runs on the request thread after commit; it only starts the sync, but with Redis unreachable the
-lock attempt adds about a second to the request (see Lock below).
+that can't start right then (one is running, rate limited, RabbitMQ unreachable) is logged and skipped.
+The listener runs on the request thread after commit; it only queues the sync, but with Redis or RabbitMQ
+unreachable the failed attempt adds about a second (Redis) or up to `spring.rabbitmq.connection-timeout` (2s)
+to the request.
 Turn it off with `resourceapi.sync.on-change=false` (tests do, except `SyncOnProjectChangeTest`).
+
+## Sync queue (RabbitMQ)
+`POST /api/v2/projects/{id}/sync` queues the sync in the durable RabbitMQ queue `resourceapi.project-sync`
+(`resourceapi.sync.queue`) and answers `202 Accepted` once the broker confirmed it has the request; a consumer
+(`ProjectSyncConsumer`) refreshes the project's name from its SDLC system. Requests survive restarts, and a burst
+of them waits in the queue instead of being refused. If RabbitMQ is unreachable, the request gets `503` with
+`Retry-After`.
+
+- Each instance runs `spring.rabbitmq.listener.simple.concurrency` (4) consumers on virtual threads, taking one
+  request at a time (`prefetch=1`), so waiting requests go to whichever instance is free.
+- A sync failing for a reason that may pass (SDLC system unreachable, `5xx` or `429`, our own SDLC rate limit) is
+  retried after 1s and 2s (`resourceapi.sync.max-retries`, `retry-delay`, `retry-multiplier`); a sync that still
+  fails, or fails for another reason (e.g. `403`), goes to the dead-letter queue `<queue>.dead`, where it can be
+  inspected and moved back (e.g. with the management UI's shovel). A project deleted in the meantime is skipped.
+- The project's sync lock (see Redis below) is released however the sync ends.
 
 ## Notifications (RabbitMQ)
 Other systems learn about project changes from RabbitMQ (`spring.rabbitmq.*`, default `localhost:5672`):
@@ -125,9 +141,10 @@ optimization: if Redis is unreachable, cache reads and writes are logged and ski
 500 ms Redis timeouts) and requests are served without it.
 
 **Lock** ([Redisson](https://redisson.org/) `RLock`): at most one `POST /api/v2/projects/{id}/sync` per project
-runs at a time, across all instances; a second one gets `409 Conflict` until the first ends. The lock is
-released when the background sync ends and expires after `resourceapi.sync.lock-lease-time` (60s) in case
-an instance dies mid-sync. If Redis can't be reached, the sync runs without the lock (a duplicate sync only
+is queued or running at a time, across all instances; a second one gets `409 Conflict` until the first ends. The
+lock is taken by the request and released by whichever instance runs the sync when it ends (the request carries
+the lock's owner id), and expires after `resourceapi.sync.lock-lease-time` (60s) in case an instance dies
+mid-sync or the request waits in the queue longer than that. If Redis can't be reached, the sync runs without the lock (a duplicate sync only
 costs an extra SDLC call; the failed lock request takes about a second). Redisson connects lazily and uses the
 same Redis connection settings; its keys are prefixed with `resourceapi.redisson.key-prefix`. Only a
 standalone Redis is supported for the lock: with Sentinel or Cluster the application still starts and syncs
@@ -140,7 +157,7 @@ available again one period later, which is also what `Retry-After` says):
 | Limit | Default | When exceeded |
 |---|---|---|
 | Calls to one SDLC system (`resourceapi.rate-limit.sdlc.*`), protecting its API quota; cache hits don't count | 10 per 1s, waiting up to 1s for a permit | `503` + `Retry-After` (our own limit, not the SDLC system's failure); a background sync logs it |
-| `POST /api/v2/projects/{id}/sync` per project (`resourceapi.rate-limit.sync.*`); requests refused anyway (unknown project, sync already running) don't count, one refused because no background slot is free (`503`) does | 6 per minute | `429` + `Retry-After` |
+| `POST /api/v2/projects/{id}/sync` per project (`resourceapi.rate-limit.sync.*`); requests refused anyway (unknown project, sync already running) don't count, one refused because RabbitMQ is unreachable (`503`) does | 6 per minute | `429` + `Retry-After` |
 | All `/api/**` requests per client IP (`resourceapi.rate-limit.client.*`); behind a reverse proxy the IP comes from `X-Forwarded-For`, trusted only from internal proxy addresses (`server.forward-headers-strategy=native`, see below) | 100 per second | `429` + `Retry-After` |
 
 A changed rate is applied to the existing limiter when an instance first uses it; unused limiters expire from
@@ -170,10 +187,9 @@ Every request gets a trace id ([Micrometer Tracing](https://micrometer.io/docs/t
 - outgoing `RestClient` calls (e.g. to SDLC systems) send `traceparent`, so the trace continues there
 
 - background work keeps the trace: `@Async` tasks run on virtual threads (`spring.threads.virtual.enabled`) and
-  `ContextPropagatingTaskDecorator` copies the caller's trace context to them. Example:
-  `POST /api/v2/projects/{id}/sync` answers `202 Accepted` and refreshes the project's name from its SDLC system
-  in the background; its log lines and its call to the SDLC system carry the request's trace id. At most
-  `spring.task.execution.simple.concurrency-limit` (8) syncs run at once; further requests get `503` with `Retry-After`
+  `ContextPropagatingTaskDecorator` copies the caller's trace context to them; RabbitMQ messages carry it in a
+  `traceparent` header (Spring AMQP observation) and their listeners continue it. Example: a queued sync's log
+  lines and its call to the SDLC system carry the trace id of the `POST …/sync` request
 
 No spans are exported; add a reporter (e.g. Zipkin or OTLP) to send them to a tracing backend, and lower
 `management.tracing.sampling.probability` (set to `1.0` here) to what that backend can take.
