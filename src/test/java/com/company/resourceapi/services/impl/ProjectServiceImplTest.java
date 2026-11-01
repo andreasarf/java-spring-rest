@@ -36,7 +36,7 @@ public class ProjectServiceImplTest {
     @BeforeEach
     void setup() {
         projectService = new ProjectServiceImpl(projectRepository,
-                Validation.buildDefaultValidatorFactory().getValidator());
+                Validation.buildDefaultValidatorFactory().getValidator(), event -> { });
 
         var sdlcSystem = new SdlcSystem();
         sdlcSystem.setId(1);

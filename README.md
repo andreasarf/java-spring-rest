@@ -65,6 +65,22 @@ injects uses Boot's single request factory, so there is one pool for the applica
 The client is tested against [WireMock](https://wiremock.org/) (`SdlcProjectClientTest`, `ExternalProjectIntegrationTest`,
 and `SdlcProjectClientPoolingTest`, which counts the connections actually opened).
 
+## Events
+`ProjectService` publishes Spring application events (package `events`) inside the transaction that
+changes a project:
+
+- `ProjectCreated`
+- `ProjectUpdated`, with the new state and which fields changed (`NAME`, `EXTERNAL_ID`, `SDLC_SYSTEM`); not
+  published when an update changes nothing. Changes made by a sync from the SDLC system are published too.
+
+Listeners use `@TransactionalEventListener`, so they only see committed changes. `SyncOnProjectChange`
+starts a background sync (as `POST /api/v2/projects/{id}/sync` does) when a project is created or re-keyed
+(pointed at another SDLC project), so its name comes from the SDLC system without the client asking. A sync
+that can't start right then (one is running, rate limited, no free background slot) is logged and skipped.
+The listener runs on the request thread after commit; it only starts the sync, but with Redis unreachable the
+lock attempt adds about a second to the request (see Lock below).
+Turn it off with `resourceapi.sync.on-change=false` (tests do, except `SyncOnProjectChangeTest`).
+
 ## API documentation
 The OpenAPI document is served at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`
 ([springdoc-openapi](https://springdoc.org/)), generated from the controllers and their `@Operation`/`@Parameter`
