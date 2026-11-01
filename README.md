@@ -73,6 +73,9 @@ changes a project:
 - `ProjectUpdated`, with the new state and which fields changed (`NAME`, `EXTERNAL_ID`, `SDLC_SYSTEM`); not
   published when an update changes nothing. Changes made by a sync from the SDLC system are published too.
 
+Both carry `occurredAt`, when the change was made: events about one project can reach a listener out of order
+(e.g. one retried later), so an event older than the last one applied is stale.
+
 Listeners use `@TransactionalEventListener`, so they only see committed changes. `SyncOnProjectChange`
 starts a background sync (as `POST /api/v2/projects/{id}/sync` does) when a project is created or re-keyed
 (pointed at another SDLC project), so its name comes from the SDLC system without the client asking. A sync
