@@ -10,6 +10,7 @@ import com.company.resourceapi.exceptions.NotFoundException;
 import com.company.resourceapi.exceptions.RateLimitExceededException;
 import com.company.resourceapi.exceptions.SyncInProgressException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.AmqpException;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -48,6 +49,13 @@ public class ApiExceptionHandler {
         }
         var status = caller ? TOO_MANY_REQUESTS : SERVICE_UNAVAILABLE;
         return ResponseEntity.status(status).header(RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds())).build();
+    }
+
+    /** RabbitMQ is unreachable or refused a message the request needed to queue (e.g. a sync). */
+    @ExceptionHandler(AmqpException.class)
+    ResponseEntity<Void> handleMessagingFailure(AmqpException e) {
+        log.warn("Message broker unavailable: {}", e.getMessage());
+        return ResponseEntity.status(SERVICE_UNAVAILABLE).header(RETRY_AFTER, "5").build();
     }
 
     /** The background task executor is at its concurrency limit; the client can retry shortly. */

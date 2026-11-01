@@ -55,10 +55,28 @@ public class ProjectSyncLock {
         }
     }
 
+    /**
+     * The lease taken by {@link #tryAcquire}, possibly in another instance: a sync's lock is taken
+     * where it is requested and released where it runs.
+     *
+     * @param ownerId the lease's {@link Lease#ownerIdOrNull()}
+     */
+    public Lease lease(long projectId, Long ownerId) {
+        if (redisson == null || ownerId == null) {
+            return Lease.NONE;
+        }
+        return new Lease(redisson.getLock("project-sync:" + projectId), ownerId);
+    }
+
     /** A lock that may be held; releasing one that isn't (anymore) only logs. */
     public record Lease(RLock lock, long ownerId) {
 
         static final Lease NONE = new Lease(null, 0);
+
+        /** @return the owner id to hand to whoever releases the lock, null for a sync without the lock */
+        public Long ownerIdOrNull() {
+            return lock == null ? null : ownerId;
+        }
 
         public void release() {
             if (lock == null) {
