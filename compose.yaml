@@ -5,3 +5,9 @@ services:
     image: redis:8-alpine
     ports:
       - "6379:6379"
+  rabbitmq:
+    # management UI on http://localhost:15672 (guest/guest)
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"

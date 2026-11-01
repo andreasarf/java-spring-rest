@@ -1,2 +1,3 @@
 org.springframework.context.ApplicationContextInitializer=\
-com.company.resourceapi.RedisTestContainerInitializer
+com.company.resourceapi.RedisTestContainerInitializer,\
+com.company.resourceapi.RabbitTestContainerInitializer

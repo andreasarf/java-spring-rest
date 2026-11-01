@@ -18,6 +18,7 @@
 		<java.version>25</java.version>
 		<springdoc-openapi.version>3.2.0</springdoc-openapi.version>
 		<redisson.version>4.8.0</redisson.version>
+		<spring-modulith.version>2.1.2</spring-modulith.version>
 		<wiremock.version>3.13.2</wiremock.version>
 		<jacoco.version>0.8.16</jacoco.version>
 		<!-- Overridden by agents such as JaCoCo; keeps @{argLine} resolvable when none is set -->
@@ -64,6 +65,21 @@
 			<groupId>org.redisson</groupId>
 			<artifactId>redisson</artifactId>
 			<version>${redisson.version}</version>
+		</dependency>
+		<dependency>
+			<!-- RabbitMQ: project notifications for other systems -->
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-amqp</artifactId>
+		</dependency>
+		<dependency>
+			<!-- Outbox: events are stored in the database with the change that caused them, then sent on -->
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-events-jdbc</artifactId>
+		</dependency>
+		<dependency>
+			<!-- ... stored as JSON -->
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-events-jackson</artifactId>
 		</dependency>
 		<dependency>
 			<!-- Pooled HTTP client for RestClient (Boot picks it up when present) -->
@@ -124,6 +140,18 @@
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.modulith</groupId>
+				<artifactId>spring-modulith-bom</artifactId>
+				<version>${spring-modulith.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
 	<build>
 		<plugins>
