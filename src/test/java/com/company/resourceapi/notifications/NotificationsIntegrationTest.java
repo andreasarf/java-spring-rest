@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +26,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
@@ -56,6 +58,9 @@ class NotificationsIntegrationTest {
 
     @Autowired
     private UnsentNotifications unsentNotifications;
+
+    @Autowired
+    private SimpleAsyncTaskExecutor notificationExecutor;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -126,6 +131,61 @@ class NotificationsIntegrationTest {
         assertThat(message.getMessageProperties().getReceivedRoutingKey()).isEqualTo("project.created");
         assertThat(body(message)).contains("\"externalId\":\"NOTIFY-3\"");
         await(() -> outboxSize() == 0);
+    }
+
+    @Test
+    void givenAllSendersBusyThenRequestDoesNotWaitAndNotificationIsSentLater() throws Exception {
+        // connections (database, Redis, RabbitMQ) already open, so the timing below is the request's own
+        create("NOTIFY-4-WARMUP");
+        receive();
+        await(() -> outboxSize() == 0);
+
+        // every send slot taken, e.g. by sends waiting for an unreachable broker
+        var release = new CountDownLatch(1);
+        var busy = new CountDownLatch(16);
+        for (int i = 0; i < 16; i++) {
+            notificationExecutor.execute(() -> {
+                busy.countDown();
+                awaitQuietly(release);
+            });
+        }
+        busy.await();
+        // in case the request does wait for a slot: freed after 3s, so the test fails instead of hanging
+        Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(3_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            release.countDown();
+        });
+
+        long started = System.nanoTime();
+        create("NOTIFY-4");
+
+        try {
+            // the request isn't held up by the full executor; the event waits in the outbox
+            assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(1));
+            await(() -> outboxSize() == 1);
+            assertThat(rabbitTemplate.receive(queue.getName(), 300)).isNull();
+        } finally {
+            release.countDown();
+        }
+
+        // sent again once a slot is free (the blocked tasks end right after the release)
+        await(() -> {
+            unsentNotifications.resubmit();
+            return outboxSize() == 0;
+        });
+        assertThat(body(receive())).contains("\"externalId\":\"NOTIFY-4\"");
+    }
+
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private long create(String externalId) throws Exception {

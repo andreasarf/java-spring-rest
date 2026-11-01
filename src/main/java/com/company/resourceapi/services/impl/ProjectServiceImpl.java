@@ -10,6 +10,7 @@ import com.company.resourceapi.repositories.ProjectRepository;
 import com.company.resourceapi.services.ProjectService;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Validator;
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Optional;
@@ -33,7 +34,7 @@ public class ProjectServiceImpl implements ProjectService {
 	public Project createProject(Project project) {
 		var created = projectRepository.save(project);
 		events.publishEvent(new ProjectCreated(created.getId(), created.getSdlcSystem().getId(),
-				created.getExternalId(), created.getName()));
+				created.getExternalId(), created.getName(), Instant.now()));
 		return created;
 	}
 
@@ -79,7 +80,7 @@ public class ProjectServiceImpl implements ProjectService {
 		}
 		if (!changed.isEmpty()) {
 			events.publishEvent(new ProjectUpdated(id, project.getSdlcSystem().getId(),
-					project.getExternalId(), project.getName(), changed));
+					project.getExternalId(), project.getName(), changed, Instant.now()));
 		}
 
 		// Managed entity: flushed on commit, only the changed columns (@DynamicUpdate)
