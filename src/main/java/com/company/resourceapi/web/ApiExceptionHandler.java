@@ -3,10 +3,12 @@ package com.company.resourceapi.web;
 import static org.springframework.http.HttpHeaders.RETRY_AFTER;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
+import static org.springframework.http.HttpStatus.PRECONDITION_FAILED;
 import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
 import static org.springframework.http.HttpStatus.TOO_MANY_REQUESTS;
 
 import com.company.resourceapi.exceptions.NotFoundException;
+import com.company.resourceapi.exceptions.PreconditionFailedException;
 import com.company.resourceapi.exceptions.RateLimitExceededException;
 import com.company.resourceapi.exceptions.SyncInProgressException;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,13 @@ public class ApiExceptionHandler {
     ResponseEntity<Void> handleNotFound(NotFoundException e) {
         log.debug(e.getMessage());
         return ResponseEntity.status(NOT_FOUND).build();
+    }
+
+    /** The client's copy is out of date: it should read the project again and reapply its change. */
+    @ExceptionHandler(PreconditionFailedException.class)
+    ResponseEntity<Void> handlePreconditionFailed(PreconditionFailedException e) {
+        log.debug(e.getMessage());
+        return ResponseEntity.status(PRECONDITION_FAILED).build();
     }
 
     /** Another request already started a sync of this project, which is still running. */

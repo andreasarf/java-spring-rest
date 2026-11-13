@@ -19,6 +19,15 @@ public interface ProjectService {
      */
     Project updateProject(long id, ProjectUpdate update) throws NotFoundException;
 
+    /**
+     * As {@link #updateProject(long, ProjectUpdate)}, only if the project still matches {@code ifMatch}
+     * (an If-Match header value; null for an unconditional update). The project's row is locked from
+     * the check until the change is committed, so no other change can slip in between.
+     *
+     * @throws com.company.resourceapi.exceptions.PreconditionFailedException if it doesn't match
+     */
+    Project updateProject(long id, String ifMatch, ProjectUpdate update) throws NotFoundException;
+
     @FunctionalInterface
     interface ProjectUpdate {
         void applyTo(Project project) throws NotFoundException;

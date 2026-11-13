@@ -42,6 +42,18 @@ Database uses in-memory DB H2. It will automatically build and export the requir
 
 The H2 console (`/h2-console`, JDBC URL `jdbc:h2:mem:test`) is available while running with devtools, e.g. `./mvnw spring-boot:run`. It is not served by the packaged jar.
 
+## Conditional requests (ETag)
+`GET`, `POST` and `PATCH` on `/api/v2/projects/{id}` return the project's `ETag`, a hash of what a client can
+change (external id, name, SDLC system):
+
+- `GET` with `If-None-Match: <etag>` answers `304 Not Modified` without a body while the project is unchanged,
+  so a client can re-check a project cheaply.
+- `PATCH` with `If-Match: <etag>` applies only if nobody changed the project since the client read it;
+  otherwise `412 Precondition Failed` (read it again, reapply the change). The project's row is locked from the
+  check until the change is committed (`SELECT ... FOR UPDATE`), so nothing can slip in between. `If-Match: *`
+  matches any existing project; a weak `W/` tag never matches. Without `If-Match` an update always applies, as
+  before.
+
 ## Calling SDLC systems (RestClient example)
 `GET /api/v2/projects/{id}/external` looks the project up in its SDLC system with Spring's `RestClient`
 (`SdlcProjectClient`, Jira-style `GET {baseUrl}/rest/api/2/project/{externalId}`):
