@@ -15,9 +15,21 @@ public final class ProjectETag {
     }
 
     public static String of(Project project) {
-        var content = project.getId() + "\n" + project.getExternalId() + "\n" + project.getName() + "\n"
-                + (project.getSdlcSystem() == null ? "" : project.getSdlcSystem().getId());
-        return "\"" + DigestUtils.md5DigestAsHex(content.getBytes(StandardCharsets.UTF_8)) + "\"";
+        var content = new StringBuilder();
+        field(content, String.valueOf(project.getId()));
+        field(content, project.getExternalId());
+        field(content, project.getName());
+        field(content, project.getSdlcSystem() == null ? null : String.valueOf(project.getSdlcSystem().getId()));
+        return "\"" + DigestUtils.md5DigestAsHex(content.toString().getBytes(StandardCharsets.UTF_8)) + "\"";
+    }
+
+    /** Length-prefixed, null distinct from any text: different projects can't hash the same input. */
+    private static void field(StringBuilder content, String value) {
+        if (value == null) {
+            content.append("-;");
+        } else {
+            content.append(value.length()).append(':').append(value).append(';');
+        }
     }
 
     /**

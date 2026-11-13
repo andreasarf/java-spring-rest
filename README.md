@@ -50,7 +50,8 @@ change (external id, name, SDLC system):
   so a client can re-check a project cheaply.
 - `PATCH` with `If-Match: <etag>` applies only if nobody changed the project since the client read it;
   otherwise `412 Precondition Failed` (read it again, reapply the change). The project's row is locked from the
-  check until the change is committed (`SELECT ... FOR UPDATE`), so nothing can slip in between. `If-Match: *`
+  check until the change is committed (`SELECT ... FOR UPDATE`), so nothing can slip in between. If another update
+  holds the row longer than the database's lock timeout, the answer is `503` with `Retry-After: 1`. `If-Match: *`
   matches any existing project; a weak `W/` tag never matches. Without `If-Match` an update always applies, as
   before.
 

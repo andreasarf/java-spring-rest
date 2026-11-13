@@ -14,6 +14,7 @@ import com.company.resourceapi.exceptions.SyncInProgressException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.AmqpException;
 import org.springframework.core.task.TaskRejectedException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -34,6 +35,16 @@ public class ApiExceptionHandler {
     ResponseEntity<Void> handlePreconditionFailed(PreconditionFailedException e) {
         log.debug(e.getMessage());
         return ResponseEntity.status(PRECONDITION_FAILED).build();
+    }
+
+    /**
+     * Another update held the project's row longer than the database's lock timeout (a conditional
+     * update waits for it): busy, not wrong, so the client can retry shortly.
+     */
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    ResponseEntity<Void> handleLockTimeout(PessimisticLockingFailureException e) {
+        log.info("Project busy, update not applied: {}", e.getMostSpecificCause().getMessage());
+        return ResponseEntity.status(SERVICE_UNAVAILABLE).header(RETRY_AFTER, "1").build();
     }
 
     /** Another request already started a sync of this project, which is still running. */
