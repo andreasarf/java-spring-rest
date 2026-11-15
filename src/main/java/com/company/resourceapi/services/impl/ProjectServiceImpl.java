@@ -1,11 +1,13 @@
 package com.company.resourceapi.services.impl;
 
 import com.company.resourceapi.entities.Project;
+import com.company.resourceapi.entities.ProjectETag;
 import com.company.resourceapi.events.ProjectCreated;
 import com.company.resourceapi.events.ProjectUpdated;
 import com.company.resourceapi.events.ProjectUpdated.Field;
 import com.company.resourceapi.exceptions.ConflictException;
 import com.company.resourceapi.exceptions.NotFoundException;
+import com.company.resourceapi.exceptions.PreconditionFailedException;
 import com.company.resourceapi.repositories.ProjectRepository;
 import com.company.resourceapi.services.ProjectService;
 import jakarta.validation.ConstraintViolationException;
@@ -49,7 +51,21 @@ public class ProjectServiceImpl implements ProjectService {
 
 	@Transactional(rollbackFor = NotFoundException.class)
 	public Project updateProject(long id, ProjectUpdate update) throws NotFoundException {
-		var project = getProject(id);
+		return updateProject(id, null, update);
+	}
+
+	@Transactional(rollbackFor = NotFoundException.class)
+	public Project updateProject(long id, String ifMatch, ProjectUpdate update) throws NotFoundException {
+		Project project;
+		if (ifMatch == null) {
+			project = getProject(id);
+		} else {
+			project = projectRepository.findForUpdateById(id)
+					.orElseThrow(() -> new NotFoundException(Project.class, id));
+			if (!ProjectETag.matches(ifMatch, project)) {
+				throw new PreconditionFailedException(id);
+			}
+		}
 		var externalIdBefore = project.getExternalId();
 		var sdlcSystemBefore = project.getSdlcSystem();
 		var nameBefore = project.getName();

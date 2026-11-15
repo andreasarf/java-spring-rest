@@ -10,6 +10,7 @@ import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
 
 import com.company.resourceapi.clients.ExternalProject;
 import com.company.resourceapi.entities.Project;
+import com.company.resourceapi.entities.ProjectETag;
 import com.company.resourceapi.entities.SdlcSystem;
 import com.company.resourceapi.exceptions.ConflictException;
 import com.company.resourceapi.exceptions.NotFoundException;
@@ -29,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.hibernate.exception.ConstraintViolationException.ConstraintKind;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,10 +38,12 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -60,12 +64,21 @@ public class ProjectRestController {
     private final SdlcSystemService sdlcSystemService;
     private final ExternalProjectService externalProjectService;
 
-    @Operation(summary = "Get a Project")
+    @Operation(summary = "Get a Project",
+            description = "Returns the project's ETag. With If-None-Match carrying it, answers 304 Not Modified "
+                    + "while the project is unchanged.")
     @GetMapping(ENDPOINT_ID)
     public ResponseEntity<Project> getProject(
             @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
-            @PathVariable(PATH_VARIABLE_ID) final long projectId) throws NotFoundException {
-        return ResponseEntity.ok(projectService.getProject(projectId));
+            @PathVariable(PATH_VARIABLE_ID) final long projectId,
+            WebRequest request) throws NotFoundException {
+        var project = projectService.getProject(projectId);
+        var etag = ProjectETag.of(project);
+        if (request.checkNotModified(etag)) {
+            // 304 with the ETag, without a body
+            return null;
+        }
+        return ResponseEntity.ok().eTag(etag).body(project);
     }
 
     @Operation(summary = "Get a Project as described by its SDLC system")
@@ -95,16 +108,22 @@ public class ProjectRestController {
         var createdProject = projectService.createProject(project);
         return ResponseEntity.status(CREATED)
                 .location(URI.create(LOCATION_HEADER.formatted(createdProject.getId())))
+                .eTag(ProjectETag.of(createdProject))
                 .body(createdProject);
     }
 
-    @Operation(summary = "Update a Project")
+    @Operation(summary = "Update a Project",
+            description = "Send the ETag from reading the project as If-Match to update it only if nobody changed "
+                    + "it since: otherwise 412 Precondition Failed. Without If-Match the update always applies. "
+                    + "Returns the project's new ETag.")
     @PatchMapping(ENDPOINT_ID)
     public ResponseEntity<Project> updateProject(
             @Parameter(name = PATH_VARIABLE_ID, description = API_PARAM_ID, required = true)
             @PathVariable(PATH_VARIABLE_ID) long projectId,
+            @Parameter(description = "ETag the update is based on, or * for any existing project")
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
             @RequestBody PatchedProject patchedProject) throws NotFoundException {
-        var updatedProject = projectService.updateProject(projectId, project -> {
+        var updatedProject = projectService.updateProject(projectId, ifMatch, project -> {
             if (patchedProject.isNameDirty()) {
                 project.setName(patchedProject.getName());
             }
@@ -119,7 +138,7 @@ public class ProjectRestController {
             }
         });
 
-        return ResponseEntity.ok(updatedProject);
+        return ResponseEntity.ok().eTag(ProjectETag.of(updatedProject)).body(updatedProject);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
